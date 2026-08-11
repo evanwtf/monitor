@@ -1,0 +1,142 @@
+import MonitorCore
+import SwiftUI
+
+/// The window.
+///
+/// Rates on top as gauges, levels below as charts. The split is not decorative:
+/// a gauge answers "how hard is this working right now, against what it can
+/// do", and a chart answers "what has been happening". Disk and network
+/// throughput are the first question; CPU and memory are the second.
+public struct DashboardView: View {
+    @State private var model: AppModel
+    /// Seconds of history in the charts.
+    @State private var window: TimeInterval = 120
+
+    public init(model: AppModel = AppModel()) {
+        _model = State(initialValue: model)
+    }
+
+    public var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                gaugeWall
+                Divider().overlay(Theme.panelEdge)
+                charts
+            }
+            .padding(20)
+        }
+        .background(Theme.background)
+        .toolbar { toolbar }
+        .onAppear { model.start() }
+        .onDisappear { model.stop() }
+    }
+
+    // MARK: - Gauges
+
+    private var gaugeMetrics: [MetricID] {
+        // Fixed order rather than whatever the registry yields, so the dials do
+        // not move around between launches. A gauge you have to hunt for is a
+        // gauge you stop glancing at.
+        [
+            MetricID("disk.bytes.read"),
+            MetricID("disk.bytes.written"),
+            MetricID("net.bytes.in"),
+            MetricID("net.bytes.out"),
+        ].filter { model.descriptor($0) != nil }
+    }
+
+    private var gaugeWall: some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 160, maximum: 240), spacing: 16)],
+            spacing: 16
+        ) {
+            ForEach(gaugeMetrics, id: \.self) { metric in
+                if let descriptor = model.descriptor(metric) {
+                    VStack(spacing: 4) {
+                        GaugeView(
+                            title: gaugeTitle(descriptor),
+                            value: model.latest(metric),
+                            fullScale: model.scales[metric]?.fullScale ?? 1,
+                            peak: model.scales[metric]?.peak,
+                            unit: descriptor.unit,
+                            // Needle travel matches the sampling interval, so
+                            // it is still moving when the next sample arrives.
+                            travelTime: model.interval
+                        )
+                        Text(Format.value(model.latest(metric), unit: descriptor.unit))
+                            .font(.system(size: 11, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.label)
+                    }
+                }
+            }
+        }
+    }
+
+    /// "Disk" + "Read" reads better on a dial as "Disk Read" than as either
+    /// alone, since two dials on the wall both say "Read".
+    private func gaugeTitle(_ descriptor: MetricDescriptor) -> String {
+        descriptor.group == descriptor.name
+            ? descriptor.name : "\(descriptor.group) \(descriptor.name)"
+    }
+
+    // MARK: - Charts
+
+    private var chartGroups: [(name: String, metrics: [MetricID])] {
+        model.groups().filter { group in
+            group.metrics.contains { metric in
+                guard let descriptor = model.descriptor(metric) else { return false }
+                return !AppModel.isGauge(descriptor)
+            }
+        }
+    }
+
+    private var charts: some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 380), spacing: 16)],
+            spacing: 16
+        ) {
+            ForEach(chartGroups, id: \.name) { group in
+                ChartCard(
+                    title: group.name,
+                    series: group.metrics.compactMap { metric in
+                        guard let descriptor = model.descriptor(metric) else { return nil }
+                        return (descriptor: descriptor, points: model.points(metric))
+                    },
+                    window: window,
+                    isUnavailable: group.metrics.allSatisfy(model.unavailable.contains)
+                )
+            }
+        }
+    }
+
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItem {
+            Picker("History", selection: $window) {
+                Text("1 min").tag(TimeInterval(60))
+                Text("2 min").tag(TimeInterval(120))
+                Text("5 min").tag(TimeInterval(300))
+                // Ten minutes is the ceiling in v1 because that is how much the
+                // in-memory buffer holds. Longer ranges need the store.
+                Text("10 min").tag(TimeInterval(600))
+            }
+            .pickerStyle(.segmented)
+        }
+        ToolbarItem {
+            Picker("Rate", selection: $model.interval) {
+                Text("0.25 s").tag(TimeInterval(0.25))
+                Text("0.5 s").tag(TimeInterval(0.5))
+                Text("1 s").tag(TimeInterval(1))
+                Text("2 s").tag(TimeInterval(2))
+            }
+        }
+    }
+}
+
+#Preview {
+    DashboardView()
+        .frame(width: 900, height: 700)
+}

@@ -1,0 +1,26 @@
+# Formatting rules for monitor.
+#
+# Close to swiftformat's defaults so the diff stays small and the tool stays a
+# check rather than a constant source of churn.
+
+--swiftversion 6.0
+
+--indent 4
+--maxwidth 96
+
+# Explicit self only where required.
+--self remove
+
+# Ranges without spaces: 0..<n matches prevailing Swift style.
+--ranges nospace
+
+# Rules deliberately disabled:
+#
+#   wrapFunctionBodies / wrapIfStatementBodies / wrapLoopBodies /
+#   wrapPropertyBodies — one-line accessors, guards and helpers read better on
+#                        one line, and the drawing code is full of them.
+#   blankLinesAroundMark — MARK sections here often follow a doc comment.
+--disable wrapFunctionBodies, blankLinesAroundMark, wrapIfStatementBodies, \
+          wrapLoopBodies, wrapPropertyBodies
+
+--exclude .build

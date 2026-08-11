@@ -1,0 +1,56 @@
+// swift-tools-version: 6.0
+import PackageDescription
+
+// A standalone macOS system monitor. Not a menu-bar extra: the whole point is a
+// window with charts big enough to read.
+//
+//   MonitorCore     metric model, time series, gauge scaling — no macOS APIs
+//   MonitorSources  the macOS-specific readers (mach, IOKit, sysctl)
+//   MonitorUI       SwiftUI dashboard
+//   monitor         the app
+//   monitorctl      headless CLI — develop and verify sources without the GUI
+//   MonitorStore    on-disk history — designed and tested, deliberately NOT
+//                   linked into v1; see below
+//
+// MonitorCore deliberately knows nothing about macOS so the time-series,
+// downsampling and gauge-scaling logic is testable on its own, without a
+// machine to read.
+//
+// **v1 writes nothing to disk.** `monitor` does not depend on `MonitorStore`,
+// so there is no code path in the app that can touch the filesystem — a
+// property the dependency graph enforces rather than a rule someone has to
+// remember. A monitor is a program that runs all day forever, and a careless
+// one costs real SSD endurance for data nobody reads. `MonitorStore` exists
+// because persistence is coming, and its retention design is worth having
+// settled early, but linking it into the app is a deliberate later decision.
+// `docs/storage.md` works through the write-amplification arithmetic.
+
+let package = Package(
+    name: "monitor",
+    platforms: [
+        .macOS(.v14),
+    ],
+    products: [
+        .library(name: "MonitorCore", targets: ["MonitorCore"]),
+        .library(name: "MonitorSources", targets: ["MonitorSources"]),
+        .library(name: "MonitorStore", targets: ["MonitorStore"]),
+        .library(name: "MonitorUI", targets: ["MonitorUI"]),
+        .executable(name: "monitor", targets: ["monitor"]),
+        .executable(name: "monitorctl", targets: ["monitorctl"]),
+    ],
+    targets: [
+        .target(name: "MonitorCore"),
+        .target(name: "MonitorSources", dependencies: ["MonitorCore"]),
+        .target(name: "MonitorStore", dependencies: ["MonitorCore"]),
+        // Note the absence of MonitorStore in the next three targets. That is
+        // the point, not an oversight.
+        .target(name: "MonitorUI", dependencies: ["MonitorCore", "MonitorSources"]),
+        .executableTarget(name: "monitor", dependencies: ["MonitorUI"]),
+        .executableTarget(name: "monitorctl", dependencies: ["MonitorCore", "MonitorSources"]),
+        .testTarget(name: "MonitorCoreTests", dependencies: ["MonitorCore"]),
+        .testTarget(
+            name: "MonitorSourcesTests",
+            dependencies: ["MonitorSources", "MonitorCore"]),
+        .testTarget(name: "MonitorStoreTests", dependencies: ["MonitorStore", "MonitorCore"]),
+    ]
+)

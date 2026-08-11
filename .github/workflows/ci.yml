@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# These jobs run on a self-hosted runner — a Mac on a desk, not a disposable
+# VM. On a public repository a pull request from a fork would therefore be
+# arbitrary code execution on that machine, so the jobs run only for pull
+# requests raised from a branch in this repository. A fork PR reports no CI
+# rather than running untrusted code; a reviewer can re-run it from a local
+# branch.
+jobs:
+  package:
+    name: Build and test
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build
+        run: swift build
+
+      # The source tests read this machine, so they need a real Mac — which is
+      # what the self-hosted runner is. They assert plausible ranges rather
+      # than values, so they pass whatever the runner happens to be doing.
+      - name: Test
+        run: swift test
+
+      - name: Build release
+        run: swift build -c release
+
+      # Exercises the sampling path end to end without a window.
+      - name: Smoke test CLI
+        run: |
+          swift run -c release monitorctl list
+          swift run -c release monitorctl read
+
+  lint:
+    name: Format check
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure swiftformat
+        run: |
+          if ! command -v swiftformat >/dev/null 2>&1; then
+            brew install swiftformat
+          fi
+          # Printed so a lint failure caused by a tool upgrade introducing new
+          # rules is obvious from the log rather than looking like a code
+          # regression.
+          echo "swiftformat $(swiftformat --version)"
+
+      - name: Lint
+        run: swiftformat Sources Tests --lint --cache ignore
