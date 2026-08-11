@@ -20,8 +20,9 @@ monitor live. Persistence and a background sampler come later — see
   dependencies.
 - SwiftUI, Swift Charts, `Canvas` for the gauges.
 - System APIs: mach (`host_processor_info`, `host_statistics64`), IOKit
-  (`IOBlockStorageDriver`, `IOAccelerator`), `getifaddrs`, `sysctl`.
-- Tests use swift-testing (`@Test`, `#expect`), not XCTest — 60 tests in 10 suites.
+  (`IOBlockStorageDriver`, `IOAccelerator`), `getifaddrs`, `sysctl`,
+  SystemConfiguration (`SCNetworkInterfaceCopyAll`).
+- Tests use swift-testing (`@Test`, `#expect`), not XCTest — 64 tests in 10 suites.
 - swiftformat (`.swiftformat`) for lint. CI runs on a self-hosted macOS ARM64
   runner.
 
@@ -79,6 +80,15 @@ docs/              README.md is the index
   at every magnitude. The unit under a needle must not change while you are
   reading it. Network converts bytes to bits *in the source*, so the dial, the
   chart axis and `monitorctl` cannot disagree about it.
+- **Network counts physical NICs only** — Wi-Fi and wired, via
+  `SCNetworkInterfaceCopyAll` filtered to the Ethernet and IEEE80211 types.
+  Summing every `getifaddrs` interface double-counts a VPN's traffic (once on
+  `utun`, once on the `en` it leaves by) and adds AirDrop and Apple's internal
+  interfaces on top.
+- **CPU load is per cluster, not per core.** One series per `hw.perflevel`,
+  keyed by level because the *name* differs across silicon ("Super" on M4,
+  "Performance" earlier). `host_processor_info` numbers cores in reverse
+  perflevel order — slowest cluster first.
 - **Gauges are for rates, charts are for levels.** A dial answers "how hard is
   this working right now against what it can do" (disk, network throughput). A
   chart answers "what has been happening" (CPU, memory). `AppModel.isGauge`

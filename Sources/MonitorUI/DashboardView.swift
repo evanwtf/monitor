@@ -82,12 +82,27 @@ public struct DashboardView: View {
 
     // MARK: - Charts
 
+    /// Which groups get a chart card, in the order they appear.
+    ///
+    /// Named explicitly rather than derived, for the same reason as the gauge
+    /// list: cards that move between launches are cards you have to hunt for.
+    /// Deriving it also cannot express the two decisions encoded here — that
+    /// disk and network throughput deserve a chart *as well as* a dial, since a
+    /// needle cannot tell you a transfer has been running for a minute; and
+    /// that "Disk Ops", "Network Packets" and "Memory Paging" are diagnostic
+    /// detail that belongs in `monitorctl`, not on a dashboard you glance at.
+    private static let chartGroupOrder = [
+        "CPU", "CPU Cores", "Memory", "Disk", "Network", "GPU", "Disk Latency",
+    ]
+
     private var chartGroups: [(name: String, metrics: [MetricID])] {
-        model.groups().filter { group in
-            group.metrics.contains { metric in
-                guard let descriptor = model.descriptor(metric) else { return false }
-                return !AppModel.isGauge(descriptor)
-            }
+        let available = Dictionary(
+            model.groups().map { ($0.name, $0.metrics) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return Self.chartGroupOrder.compactMap { name in
+            guard let metrics = available[name], !metrics.isEmpty else { return nil }
+            return (name: name, metrics: metrics)
         }
     }
 

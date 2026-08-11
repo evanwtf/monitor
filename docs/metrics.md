@@ -18,13 +18,37 @@ difference between two readings. The first read produces nothing but a baseline.
 | `cpu.total` | busy fraction across all cores |
 | `cpu.user` | user + nice |
 | `cpu.system` | system |
-| `cpu.core.N` | busy fraction of one core |
+| `cpu.perflevel.N` | mean busy fraction across performance level N's cores |
 
 All are `fraction`, pinned to 0–1 on a chart.
 
-Cores are reported separately and never averaged into a single "CPU speed". On
-Apple silicon a performance core and an efficiency core have different ceilings,
-so their mean describes nothing physical.
+Load is reported **per cluster**, one series per `hw.perflevel`, and never
+averaged across them: on Apple silicon a performance core and an efficiency core
+have different ceilings, so their mean describes nothing physical. Within a
+cluster the mean is exactly right, because those cores are interchangeable to
+the scheduler.
+
+A line per core says less than a line per cluster. At ten cores the chart is
+unreadable spaghetti and its legend does not fit, and the question a dashboard
+answers is "is the fast cluster working", not "which of these four".
+
+Two details about the mapping:
+
+- The id is keyed by performance level, not by the cluster's name.
+  `hw.perflevel0` is always the fastest cluster on any machine that has them, so
+  the id means the same thing everywhere. The name does not: an M4 calls level 0
+  "Super" where earlier silicon calls it "Performance".
+- `host_processor_info` numbers cores in **reverse** performance-level order —
+  the *slowest* cluster comes first. Verified on an M4 (10 cores, 4 at level 0
+  "Super", 6 at level 1 "Efficiency") by pinning four `userInteractive` threads,
+  which the scheduler puts on the fast cluster: cores 6–9 hit 99% while 0–5
+  stayed idle.
+
+A machine with fewer than two performance levels — any Intel Mac — gets no
+cluster series at all, since one uniform "cluster" would just duplicate
+`cpu.total`. The source also reports none if the level sizes do not add up to
+the core count: a wrong split would attribute real load to the wrong kind of
+core, which is worse than no split.
 
 ## Memory — `MemorySource`
 
@@ -72,7 +96,7 @@ constants live in a header that is not in IOKit's Swift module map.
 
 ## Network — `NetworkSource`
 
-`getifaddrs`, `AF_LINK` entries only, loopback excluded.
+`getifaddrs`, `AF_LINK` entries only, restricted to physical interfaces.
 
 | id | Meaning |
 |----|---------|
@@ -80,8 +104,31 @@ constants live in a header that is not in IOKit's Swift module map.
 | `net.packets.in`, `net.packets.out` | packet rate |
 
 Only `AF_LINK` entries carry counters; an interface also has an `AF_INET` entry
-and counting both would double every byte. Loopback is excluded because it is
-the machine talking to itself and it swamps the chart during a build.
+and counting both would double every byte.
+
+**Only real NICs are counted — Wi-Fi and wired.** A Mac carries a crowd of
+interfaces that are not the network, and summing everything `getifaddrs` returns
+reports more traffic than crossed the wire:
+
+| interface | what it is |
+|-----------|------------|
+| `lo0` | the machine talking to itself; swamps the chart during a build |
+| `utun0…8` | VPN and per-app tunnels. Traffic through one is counted **twice** if you sum both the tunnel and the `en0` it leaves by |
+| `awdl0` | AirDrop / AirPlay |
+| `llw0`, `anpi0`, `ap1` | Apple's link-local and internal interfaces |
+| `bridge0` | Thunderbolt Bridge — real hardware underneath, virtual interface on top |
+| `gif0`, `stf0` | IPv6 transition pseudo-devices |
+
+The list of real interfaces comes from `SCNetworkInterfaceCopyAll`, filtered to
+the `Ethernet` and `IEEE80211` types. That is an allow-list of interface *types*,
+deliberately, rather than a deny-list of name prefixes: a deny-list has to be
+extended every time Apple ships another `anpi`-style internal interface, and the
+failure mode of missing one is silently over-reporting traffic — the kind of
+wrong number nobody checks.
+
+`SCNetworkInterfaceCopyAll` costs about 0.8 ms, which is far too much at two
+reads a second, so the result is cached and re-resolved every 10 seconds. A
+dongle plugged in mid-session appears within that window.
 
 The byte counters are multiplied by 8 and reported as bits. Every number anyone
 quotes about a network is in bits — a 1 Gbit port, a 300 Mbit service, an

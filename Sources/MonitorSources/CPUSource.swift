@@ -2,22 +2,26 @@ import Darwin
 import Foundation
 import MonitorCore
 
-/// Per-core and aggregate CPU load, from `host_processor_info`.
+/// Aggregate and per-cluster CPU load, from `host_processor_info`.
 ///
 /// The kernel reports cumulative ticks per core in four states, so load is the
 /// difference between two readings — the first `read` therefore produces
 /// nothing but a baseline. That is why the sampler must not treat an empty
 /// batch as an error.
 ///
-/// Apple silicon has efficiency and performance cores with different ceilings.
-/// This source reports every core separately and lets the UI group them; it
-/// does not try to average a P-core and an E-core into one number, because that
-/// number would not mean anything.
+/// Apple silicon has clusters of cores with different ceilings, and load is
+/// reported as one series per cluster. Averaging *across* clusters would be
+/// meaningless — a pinned efficiency core and a pinned performance core are not
+/// the same amount of work — but averaging *within* one is exactly right, since
+/// a cluster's cores are interchangeable to the scheduler. A line per core says
+/// less: at ten cores the chart is unreadable and its legend does not fit.
 public final class CPUSource: MetricSource, @unchecked Sendable {
     public let id = "cpu"
 
     /// Ticks from the previous reading, one entry per core.
     private var previous: [ProcessorTicks] = []
+    /// Resolved once: the topology cannot change while the process runs.
+    private let clusters = CPUSource.readClusters()
 
     struct ProcessorTicks {
         var user: UInt32
@@ -33,7 +37,15 @@ public final class CPUSource: MetricSource, @unchecked Sendable {
     public static let total = MetricID("cpu.total")
     public static let user = MetricID("cpu.user")
     public static let system = MetricID("cpu.system")
-    public static func core(_ index: Int) -> MetricID { MetricID("cpu.core.\(index)") }
+
+    /// Keyed by performance level, not by the cluster's marketing name.
+    ///
+    /// `hw.perflevel0` is always the fastest cluster on any machine that has
+    /// them, so the id means the same thing everywhere and stays stable. The
+    /// name does not: this M4 calls level 0 "Super" where earlier silicon calls
+    /// it "Performance", and a `cpu.cluster.performance` id would have to be
+    /// either a lie or a rename.
+    public static func cluster(_ level: Int) -> MetricID { MetricID("cpu.perflevel.\(level)") }
 
     public var descriptors: [MetricDescriptor] {
         var result = [
@@ -49,15 +61,87 @@ public final class CPUSource: MetricSource, @unchecked Sendable {
                 nominalMaximum: 1
             ),
         ]
-        for index in 0..<ProcessInfo.processInfo.activeProcessorCount {
+        for cluster in clusters {
             result.append(
                 MetricDescriptor(
-                    id: Self.core(index), name: "Core \(index)", group: "CPU Cores",
+                    id: Self.cluster(cluster.level), name: cluster.name, group: "CPU Cores",
                     unit: .fraction, nominalMaximum: 1
                 )
             )
         }
         return result
+    }
+
+    /// One cluster of interchangeable cores.
+    struct Cluster {
+        /// `hw.perflevel` index: 0 is always the fastest cluster.
+        let level: Int
+        /// The kernel's own name for it — "Super", "Performance", "Efficiency".
+        let name: String
+        /// The core indices `host_processor_info` reports it under.
+        let cores: Range<Int>
+    }
+
+    /// Maps `hw.perflevel*` onto the core indices the kernel reports.
+    ///
+    /// `host_processor_info` numbers cores in **reverse** performance-level
+    /// order: the slowest cluster comes first. Verified on this M4 (10 cores,
+    /// 4 at level 0 named "Super", 6 at level 1 named "Efficiency") by pinning
+    /// four `userInteractive` threads, which the scheduler puts on the fast
+    /// cluster: cores 6–9 went to 99% and cores 0–5 stayed idle.
+    ///
+    /// Returns empty on a machine with fewer than two levels — an Intel Mac has
+    /// one uniform cluster, and a single "cluster" series would just duplicate
+    /// `cpu.total`. Also returns empty if the level sizes do not add up to the
+    /// core count, because a wrong split is worse than no split: it would label
+    /// real load as coming from the wrong kind of core.
+    static func readClusters() -> [Cluster] {
+        let levels = sysctlInt("hw.nperflevels") ?? 1
+        guard levels > 1 else { return [] }
+
+        var descending: [(level: Int, name: String, count: Int)] = []
+        for level in 0..<levels {
+            guard let count = sysctlInt("hw.perflevel\(level).logicalcpu"), count > 0 else {
+                return []
+            }
+            let name = sysctlString("hw.perflevel\(level).name") ?? "Level \(level)"
+            descending.append((level, name, count))
+        }
+
+        let total = descending.reduce(0) { $0 + $1.count }
+        guard total == ProcessInfo.processInfo.activeProcessorCount else { return [] }
+
+        var result: [Cluster] = []
+        var start = 0
+        for entry in descending.reversed() {
+            result.append(
+                Cluster(
+                    level: entry.level,
+                    name: entry.name,
+                    cores: start..<(start + entry.count)
+                )
+            )
+            start += entry.count
+        }
+        // Fastest cluster first, so it takes the first series colour and reads
+        // at the top of the legend.
+        return result.sorted { $0.level < $1.level }
+    }
+
+    static func sysctlInt(_ name: String) -> Int? {
+        var value = 0
+        var size = MemoryLayout<Int>.size
+        guard sysctlbyname(name, &value, &size, nil, 0) == 0 else { return nil }
+        return value
+    }
+
+    static func sysctlString(_ name: String) -> String? {
+        var size = 0
+        guard sysctlbyname(name, nil, &size, nil, 0) == 0, size > 0 else { return nil }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctlbyname(name, &buffer, &size, nil, 0) == 0 else { return nil }
+        // sysctl includes the null terminator in the byte count it reports.
+        return String(decoding: buffer.prefix(while: { $0 != 0 }), as: UTF8.self)
     }
 
     public func read(at timestamp: TimeInterval) throws -> SampleBatch {
@@ -72,6 +156,8 @@ public final class CPUSource: MetricSource, @unchecked Sendable {
 
         var values: [MetricID: Double] = [:]
         var userTicks = 0.0, systemTicks = 0.0, totalTicks = 0.0
+        // Busy fraction per core, for the cluster averages below.
+        var busy = [Double?](repeating: nil, count: current.count)
 
         for (index, now) in current.enumerated() {
             let before = previous[index]
@@ -82,10 +168,20 @@ public final class CPUSource: MetricSource, @unchecked Sendable {
             let system = Double(now.system &- before.system)
             let idle = Double(now.idle &- before.idle)
 
-            values[Self.core(index)] = (elapsed - idle) / elapsed
+            busy[index] = (elapsed - idle) / elapsed
             userTicks += user
             systemTicks += system
             totalTicks += elapsed
+        }
+
+        // The mean over a cluster's cores. Cores that reported no elapsed ticks
+        // are left out of both halves of the average rather than counted as
+        // idle: a core the kernel did not advance this tick has no load to
+        // report, and calling that zero would drag the cluster down.
+        for cluster in clusters {
+            let loads = cluster.cores.compactMap { $0 < busy.count ? busy[$0] : nil }
+            guard !loads.isEmpty else { continue }
+            values[Self.cluster(cluster.level)] = loads.reduce(0, +) / Double(loads.count)
         }
 
         if totalTicks > 0 {

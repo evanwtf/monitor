@@ -79,6 +79,21 @@ public enum Format {
         }
     }
 
+    /// A chart axis label: the coarse number a tick wants, plus the unit.
+    ///
+    /// Same reasoning as `tickLabel` — an axis is a scale, not a measurement,
+    /// and the current value is spelled out in the card's header anyway. Three
+    /// significant figures up the side of a chart gives `0.00 MB/s` next to
+    /// `20.0 MB/s`, which reads as two different kinds of number.
+    public static func axisLabel(_ value: Double, unit: MetricUnit) -> String {
+        switch unit {
+        case .bytesPerSecond, .bitsPerSecond:
+            "\(tickLabel(value, unit: unit)) \(unitLabel(value, unit: unit))"
+        default:
+            self.value(value, unit: unit)
+        }
+    }
+
     /// Format a value according to its metric's unit.
     public static func value(_ value: Double, unit: MetricUnit) -> String {
         switch unit {
