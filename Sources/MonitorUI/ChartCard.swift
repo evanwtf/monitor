@@ -60,22 +60,46 @@ public struct ChartCard: View {
             // saves a row of chrome per card.
             ForEach(Array(series.enumerated()), id: \.offset) { index, entry in
                 if let latest = entry.points.last {
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(Theme.seriesColor(index))
-                            .frame(width: 7, height: 7)
-                        Text(entry.descriptor.name)
-                            .foregroundStyle(Theme.label)
-                            .lineLimit(1)
-                        Text(Format.value(latest.value, unit: entry.descriptor.unit))
-                            .foregroundStyle(Theme.readout)
-                            .monospacedDigit()
-                            .lineLimit(1)
-                    }
-                    .font(.system(size: Theme.Layout.cardLegend, design: .rounded))
+                    legendEntry(entry.descriptor, index: index, latest: latest)
                 }
             }
         }
+    }
+
+    /// One legend entry: colour swatch, series name, current value.
+    ///
+    /// Monospaced, and the value sits in a slot pre-sized to the widest reading
+    /// its unit can produce. Both matter for the same reason: a legend whose
+    /// entries change width is a legend that shuffles sideways while you are
+    /// reading it. A monospaced face stops individual digits from changing width
+    /// as they change value; the reserved slot stops the *number of* digits from
+    /// moving everything else, which is what made a series climbing from `1%` to
+    /// `100%` appear to wiggle the whole card.
+    ///
+    /// `.monospacedDigit()` is not enough on its own — it equalises digit widths
+    /// but reserves nothing, so `1%` and `100%` still occupy different space.
+    private func legendEntry(
+        _ descriptor: MetricDescriptor, index: Int, latest: Sample
+    ) -> some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(Theme.seriesColor(index))
+                .frame(width: 7, height: 7)
+            Text(descriptor.name)
+                .foregroundStyle(Theme.label)
+                .lineLimit(1)
+            ZStack(alignment: .leading) {
+                // Reserves the slot. A ZStack takes the width of its widest
+                // child, so a reading wider than the reservation grows the slot
+                // rather than being clipped — the reservation is a floor.
+                Text(Format.widestValue(unit: descriptor.unit))
+                    .hidden()
+                Text(Format.value(latest.value, unit: descriptor.unit))
+                    .foregroundStyle(Theme.readout)
+                    .lineLimit(1)
+            }
+        }
+        .font(.system(size: Theme.Layout.cardLegend, design: .monospaced))
     }
 
     private var unavailableNotice: some View {

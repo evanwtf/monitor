@@ -101,6 +101,32 @@ public enum Format {
         }
     }
 
+    /// The widest reading `value(_:unit:)` is expected to produce for a unit.
+    ///
+    /// Used to reserve layout width for a live value, so a card's header does
+    /// not shift as digits come and go. Without it, a CPU series climbing from
+    /// `1%` to `100%` widens its own label by two characters, every other entry
+    /// in the legend slides to make room, and the whole header appears to wiggle
+    /// while nothing but the number has changed.
+    ///
+    /// A floor rather than a cap: the caller reserves *at least* this much and
+    /// a genuinely wider reading still gets drawn in full. So being wrong here
+    /// costs a little jitter at an extreme, never a clipped number.
+    public static func widestValue(unit: MetricUnit) -> String {
+        switch unit {
+        case .fraction: "100%"
+        case .bytes: "999 GB"
+        case .bytesPerSecond: "9999 MB/s"
+        case .bitsPerSecond: "9999 Mbit/s"
+        case .operationsPerSecond: "999999/s"
+        case .count: "999999"
+        case .hertz: "9999 Hz"
+        case .celsius: "999 °C"
+        case .watts: "999.9 W"
+        case .seconds: "999.99 s"
+        }
+    }
+
     /// A dial's tick label, which is coarser than the readout on purpose.
     ///
     /// A tick is a landmark, not a measurement — the readout below the needle

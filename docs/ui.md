@@ -146,6 +146,33 @@ since chart width is what the time axis needs. `chartMinHeight` is a *minimum*,
 so a shorter window scrolls rather than squashing the charts — the right way
 round: the charts stay readable and the window decides how many you see at once.
 
+## A legend that does not shuffle
+
+Each card's header carries the current value per series. Two things keep it
+still while those values change:
+
+- **Monospaced type**, so an individual digit does not change width as it
+  changes value.
+- **A slot pre-sized to the widest reading the unit can produce**
+  (`Format.widestValue`), so the *number of* digits cannot move anything either.
+
+`.monospacedDigit()` alone is not enough: it equalises digit widths but reserves
+nothing, so `1%` and `100%` still occupy different space and every entry beside
+them slides to make room. Measured on a CPU card, a series climbing from 1% to
+100% used to move the first swatch 42px and the others 14–28px; with the slot
+reserved, all three sit at identical pixel columns at every magnitude.
+
+The reservation is a floor, not a cap — it is held by a hidden placeholder in a
+`ZStack`, which takes the width of its widest child, so a reading wider than the
+reservation grows the slot rather than being clipped. Getting `widestValue` wrong
+costs a little jitter at an extreme, never a truncated number.
+
+One shift this does not address: on a chart whose y-axis auto-scales, the axis
+label width changes when the domain rescales (`0 MB/s` … `8 MB/s` versus
+`0 MB/s` … `600 MB/s`), which moves the plot's left edge. That happens on a
+rescale rather than on every sample, and fraction charts are pinned to 0–1 so
+their labels never change at all.
+
 ## Which cards appear, and what they are bounded by
 
 `DashboardView.chartGroupOrder` names the chart cards explicitly, in order, for
