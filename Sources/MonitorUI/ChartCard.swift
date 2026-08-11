@@ -82,9 +82,29 @@ public struct ChartCard: View {
         .frame(maxWidth: .infinity, minHeight: 120)
     }
 
+    /// Points inside the visible window, per series.
+    ///
+    /// The buffer holds ten minutes and the window is usually one or two, so
+    /// most of what it holds is off the left of the chart. Swift Charts does not
+    /// drop marks outside the x domain — it draws them anyway, outside the plot
+    /// area and straight through the axis labels and the card's own edge — so
+    /// they have to be filtered out here rather than left to the scale.
+    /// `chartPlotStyle` clips what remains; this keeps the mark count honest as
+    /// well, since drawing 1200 points to show 240 is nine-tenths wasted.
+    private var visible: [(descriptor: MetricDescriptor, points: [Sample])] {
+        let range = xRange
+        return series.map { entry in
+            (entry.descriptor, entry.points.filter { $0.timestamp >= range.start })
+        }
+    }
+
     private var chart: some View {
-        Chart {
-            ForEach(Array(series.enumerated()), id: \.offset) { index, entry in
+        // Bound once rather than referenced inside the result builder: the
+        // tuple-typed series makes the builder expensive enough to type-check
+        // that the compiler warns about it.
+        let entries = visible
+        return Chart {
+            ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
                 ForEach(entry.points, id: \.timestamp) { sample in
                     LineMark(
                         x: .value("Time", Date(timeIntervalSince1970: sample.timestamp)),
@@ -100,6 +120,11 @@ public struct ChartCard: View {
         .chartLegend(.hidden)
         .chartXScale(domain: xDomain)
         .chartYScale(domain: yDomain)
+        // Belt and braces with the filtering in `visible`: a sample can still
+        // sit fractionally outside the domain at either edge, and an
+        // unclipped line drawn past the plot rect runs over the axis labels
+        // and out through the side of the card.
+        .chartPlotStyle { $0.clipped() }
         .chartYAxis {
             AxisMarks(position: .leading) { mark in
                 AxisGridLine().foregroundStyle(Theme.panelEdge.opacity(0.4))
@@ -107,7 +132,7 @@ public struct ChartCard: View {
                     if let value = mark.as(Double.self),
                        let unit = series.first?.descriptor.unit
                     {
-                        Text(Format.value(value, unit: unit))
+                        Text(Format.axisLabel(value, unit: unit))
                             .font(.system(size: 9, design: .rounded))
                             .foregroundStyle(Theme.label)
                     }
@@ -125,10 +150,16 @@ public struct ChartCard: View {
         .frame(minHeight: 140)
     }
 
+    /// The visible time span, as raw timestamps.
+    private var xRange: (start: TimeInterval, end: TimeInterval) {
+        let end = series.compactMap { $0.points.last?.timestamp }.max()
+            ?? Date().timeIntervalSince1970
+        return (end - window, end)
+    }
+
     private var xDomain: ClosedRange<Date> {
-        let end = series.compactMap { $0.points.last?.timestamp }.max() ?? Date()
-            .timeIntervalSince1970
-        return Date(timeIntervalSince1970: end - window)...Date(timeIntervalSince1970: end)
+        let range = xRange
+        return Date(timeIntervalSince1970: range.start)...Date(timeIntervalSince1970: range.end)
     }
 
     /// A fraction metric is pinned to 0...1 so a quiet CPU draws a flat line at
@@ -139,7 +170,10 @@ public struct ChartCard: View {
             if descriptor.unit == .fraction { return 0...1 }
             if let maximum = descriptor.nominalMaximum { return 0...maximum }
         }
-        let peak = series.flatMap { $0.points.map(\.value) }.max() ?? 1
+        // Scaled to what is on screen, not to the whole buffer. Otherwise a
+        // spike eight minutes off the left of a two-minute window flattens
+        // everything you can actually see.
+        let peak = visible.flatMap { $0.points.map(\.value) }.max() ?? 1
         return 0...max(peak * 1.15, .leastNonzeroMagnitude)
     }
 }

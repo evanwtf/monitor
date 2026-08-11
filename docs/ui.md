@@ -93,6 +93,35 @@ Two details are load-bearing:
 The unit beneath the digits stays ordinary type, because "Mbit/s" is not
 expressible in seven segments.
 
+## Which cards appear, and what they are bounded by
+
+`DashboardView.chartGroupOrder` names the chart cards explicitly, in order, for
+the same reason the gauge list is explicit: cards that move between launches are
+cards you have to hunt for. It also carries two decisions that deriving the list
+could not express — that disk and network throughput deserve a chart *as well as*
+a dial, because a needle cannot tell you a transfer has been running for a
+minute; and that `Disk Ops`, `Network Packets` and `Memory Paging` are diagnostic
+detail belonging in `monitorctl` rather than on a dashboard you glance at.
+
+Two things bound a chart to its card:
+
+- **Marks are filtered to the visible window.** Swift Charts does not drop marks
+  that fall outside the x domain — it draws them anyway, outside the plot area
+  and straight through the axis labels and the card's own edge. The buffer holds
+  ten minutes and the window is usually one or two, so most of what it holds has
+  to be filtered out before it reaches the chart. This is also nine-tenths less
+  drawing.
+- **`chartPlotStyle { $0.clipped() }`** catches what is left, since a sample can
+  still sit fractionally outside the domain at either edge.
+
+The y-axis scales to what is on screen, not to the whole buffer. Otherwise a
+spike eight minutes off the left of a two-minute window flattens everything you
+can actually see.
+
+Axis labels use `Format.axisLabel`, which is coarser than the readout: `20 MB/s`
+up the side rather than `20.0 MB/s` next to `0.00 MB/s`. An axis is a scale, not
+a measurement, and the current value is spelled out in the card's header anyway.
+
 ## Why the needle is a Shape and not part of the Canvas
 
 The face — bezel, ticks, labels, redline — is drawn in a `Canvas`, because none
