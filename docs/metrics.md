@@ -91,6 +91,23 @@ total time divided by the delta in operation count. Dividing the cumulative
 totals instead would give the average since boot, which never moves and is
 therefore useless.
 
+**An interval with no operations reports a latency of zero, not nothing.** With
+no operations both deltas are zero, so there is no quotient to take, and zero is
+a choice rather than a computation — the right one, because no time was spent
+waiting on the disk. Reporting nothing instead made latency the only one of this
+source's six metrics that could go absent on an idle tick, and the UI reads an
+absent metric as "not available on this machine": a claim about the hardware. The
+Disk Latency card flapped between its chart and that notice twice a second on an
+idle machine as a result (#5).
+
+The consequence worth knowing is that "operations completed instantly" and
+"nothing happened" both draw as zero. The Disk Ops card beside it tells the two
+apart.
+
+Only the *first* tick reports no latency at all, because the counters have no
+previous reading and there is genuinely no rate yet — which is a different thing
+from an idle interval.
+
 The dictionary keys are string literals because the `kIOBlockStorageDriver…`
 constants live in a header that is not in IOKit's Swift module map.
 

@@ -84,6 +84,20 @@ public final class DiskSource: MetricSource, @unchecked Sendable {
         // Mean latency over the interval: time spent divided by operations
         // completed, both as deltas. Dividing the cumulative totals instead
         // would give the average since boot, which never moves.
+        //
+        // An interval with no operations reports **zero**, not nothing. With no
+        // operations both deltas are zero, so there is no quotient to take and
+        // zero is a choice rather than a computation — but it is the right one:
+        // no time was spent waiting on the disk. Reporting nothing instead made
+        // latency the only one of this source's six metrics that could go
+        // absent on an idle tick, and the UI reads an absent metric as "not
+        // available on this machine" — a claim about the hardware. That made the
+        // card flap between its chart and that notice twice a second on an idle
+        // machine (#5).
+        //
+        // The consequence, worth knowing: "completed instantly" and "nothing
+        // happened" both draw as zero. The Disk Ops card beside it tells them
+        // apart.
         let readTimeRate = rates.rate(
             for: Self.readLatency,
             total: totals.readTime,
@@ -92,11 +106,14 @@ public final class DiskSource: MetricSource, @unchecked Sendable {
         let writeTimeRate = rates.rate(
             for: Self.writeLatency, total: totals.writeTime, at: timestamp
         )
-        if let readTimeRate, let reads = values[Self.readsPerSecond], reads > 0 {
-            values[Self.readLatency] = readTimeRate / reads / 1_000_000_000
+        // Still nil on the very first tick, when the counters have no previous
+        // reading — there is genuinely no rate yet, which is not the same thing
+        // as an idle interval.
+        if let readTimeRate, let reads = values[Self.readsPerSecond] {
+            values[Self.readLatency] = reads > 0 ? readTimeRate / reads / 1_000_000_000 : 0
         }
-        if let writeTimeRate, let writes = values[Self.writesPerSecond], writes > 0 {
-            values[Self.writeLatency] = writeTimeRate / writes / 1_000_000_000
+        if let writeTimeRate, let writes = values[Self.writesPerSecond] {
+            values[Self.writeLatency] = writes > 0 ? writeTimeRate / writes / 1_000_000_000 : 0
         }
 
         return SampleBatch(timestamp: timestamp, values: values)

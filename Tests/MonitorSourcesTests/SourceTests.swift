@@ -152,6 +152,60 @@ struct SourceTests {
         #expect(filtered.bytesIn > 0, "no physical interface reported any traffic since boot")
     }
 
+    /// Latency must never go absent while the operation counts are present.
+    ///
+    /// It used to be reported only when operations had completed, which made it
+    /// the one metric of this source's six that could vanish on an idle tick.
+    /// The UI reads an absent metric as "not available on this machine", so the
+    /// Disk Latency card flapped between its chart and that notice twice a
+    /// second on an idle machine (#5). This test does not need a busy disk or an
+    /// idle one — the invariant holds either way, which is the point.
+    @Test("disk latency is reported on every tick that has operation counts")
+    func diskLatencyNeverGoesAbsent() throws {
+        let source = DiskSource()
+        _ = try source.read(at: 0)
+        Thread.sleep(forTimeInterval: 0.2)
+        let present = try Set(source.read(at: 0.2).samples.map(\.metric))
+
+        #expect(present.contains(DiskSource.readsPerSecond), "no read rate to compare against")
+        #expect(
+            present.contains(DiskSource.writesPerSecond),
+            "no write rate to compare against"
+        )
+        #expect(present.contains(DiskSource.readLatency), "read latency went absent")
+        #expect(present.contains(DiskSource.writeLatency), "write latency went absent")
+    }
+
+    /// Zero is a legitimate latency, and an idle interval reports it. What it
+    /// must never be is negative or absurd.
+    @Test("disk latency is a plausible non-negative duration")
+    func diskLatencyRange() throws {
+        let source = DiskSource()
+        _ = try source.read(at: 0)
+        Thread.sleep(forTimeInterval: 0.2)
+        let latencies = try source.read(at: 0.2).samples.filter {
+            $0.metric == DiskSource.readLatency || $0.metric == DiskSource.writeLatency
+        }
+        #expect(!latencies.isEmpty)
+        for sample in latencies {
+            #expect(sample.value >= 0, "\(sample.metric) went negative")
+            // A mean latency above a second over a 200 ms window would mean the
+            // arithmetic is wrong, not that the disk is slow.
+            #expect(sample.value < 1, "\(sample.metric) is not a plausible mean latency")
+        }
+    }
+
+    /// The first tick has no previous counter reading, so there is genuinely no
+    /// rate yet — which is not the same thing as an idle interval, and must not
+    /// be reported as a latency of zero.
+    @Test("the first disk read yields no latency at all")
+    func diskLatencyNeedsTwoReadings() throws {
+        let source = DiskSource()
+        let first = try Set(source.read(at: 0).samples.map(\.metric))
+        #expect(!first.contains(DiskSource.readLatency))
+        #expect(!first.contains(DiskSource.writeLatency))
+    }
+
     /// Disk stays in bytes. Drives are quoted in bytes and networks in bits,
     /// and the two dials sitting side by side must not both say "10" while
     /// meaning different things.
