@@ -351,6 +351,35 @@ struct FormatTests {
         )
     }
 
+    /// The legend reserves width from `widestValue`, so if a real reading is
+    /// wider than the reservation the header jitters at that magnitude. This
+    /// checks the reservation actually covers the range each unit produces.
+    @Test("the reserved legend width covers the readings a unit produces")
+    func widestValueCoversItsRange() {
+        let cases: [(MetricUnit, [Double])] = [
+            (.fraction, [0, 0.01, 0.5, 0.999, 1]),
+            (.bytes, [0, 1500, 1_500_000, 17_179_869_184, 999_000_000_000]),
+            (.bytesPerSecond, [0, 20000, 2_350_000, 5_000_000_000, 9_000_000_000]),
+            (.bitsPerSecond, [0, 20000, 34_500_000, 940_000_000, 9_000_000_000]),
+            (.operationsPerSecond, [0, 9.9, 250, 10672, 150_000]),
+            (.seconds, [0.000004, 0.04, 0.5, 9.99]),
+            (.hertz, [0, 60, 3200]),
+            (.celsius, [0, 45, 100]),
+            (.watts, [0, 3.4, 120]),
+            (.count, [0, 42, 99999]),
+        ]
+        for (unit, values) in cases {
+            let reserved = Format.widestValue(unit: unit).count
+            for value in values {
+                let rendered = Format.value(value, unit: unit)
+                #expect(
+                    rendered.count <= reserved,
+                    "\(unit): \"\(rendered)\" (\(rendered.count)) exceeds reserved \(reserved)"
+                )
+            }
+        }
+    }
+
     /// A tick is a landmark, not a measurement — the digits live in the
     /// readout below the needle.
     @Test("dial ticks are coarser than the readout")
