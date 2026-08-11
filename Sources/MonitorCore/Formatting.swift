@@ -22,6 +22,29 @@ public enum Format {
         return "\(String(format: "%.\(digits)f", magnitude)) \(units[index])\(suffix)"
     }
 
+    /// Throughput is pinned to mega-units and never rescaled: disk in MB/s,
+    /// network in Mbit/s, at every magnitude, including 0.02 and 5000.
+    ///
+    /// Auto-scaling is right for an axis and wrong for an instrument. The unit
+    /// under a needle you are watching must not change while you are reading
+    /// it, and a readout of `900` is unusable until you have also read the word
+    /// underneath — which is a second look, on a display whose whole purpose is
+    /// to be legible in one. Pinning also stops the gauge and its own dial
+    /// labels from landing in different decades.
+    public static let throughputDivisor = 1_000_000.0
+
+    /// The number part of a throughput reading, at three significant figures.
+    ///
+    /// Three keeps the width of the readout near-constant as the value moves —
+    /// `0.02`, `2.35`, `12.4`, `245` — which matters more here than the digits
+    /// given up, because the readout sits inside a fixed inset on the dial.
+    public static func throughput(_ value: Double) -> String {
+        let scaled = value / throughputDivisor
+        if scaled >= 100 { return String(format: "%.0f", scaled) }
+        if scaled >= 10 { return String(format: "%.1f", scaled) }
+        return String(format: "%.2f", scaled)
+    }
+
     public static func fraction(_ value: Double) -> String {
         "\(Int((value * 100).rounded()))%"
     }
@@ -38,12 +61,31 @@ public enum Format {
         return String(format: "%.0f µs", seconds * 1_000_000)
     }
 
+    /// A dial's tick label, which is coarser than the readout on purpose.
+    ///
+    /// A tick is a landmark, not a measurement — the readout below the needle
+    /// is where the digits live. On a 0–10 MB/s dial the ticks want to say
+    /// 0, 5, 10, not 0.00, 5.00, 10.0, which is three characters of noise on a
+    /// face with room for none.
+    public static func tickLabel(_ value: Double, unit: MetricUnit) -> String {
+        switch unit {
+        case .bytesPerSecond, .bitsPerSecond:
+            let scaled = value / throughputDivisor
+            return scaled >= 1 || scaled == 0
+                ? String(format: "%.0f", scaled)
+                : throughput(value)
+        default:
+            return magnitude(value, unit: unit)
+        }
+    }
+
     /// Format a value according to its metric's unit.
     public static func value(_ value: Double, unit: MetricUnit) -> String {
         switch unit {
         case .fraction: fraction(value)
         case .bytes: bytes(value)
-        case .bytesPerSecond: bytes(value, perSecond: true)
+        case .bytesPerSecond, .bitsPerSecond:
+            "\(throughput(value)) \(unitLabel(value, unit: unit))"
         case .operationsPerSecond: rate(value)
         case .count: rate(value, unit: "")
         case .hertz: rate(value, unit: " Hz")
@@ -57,9 +99,11 @@ public enum Format {
     /// from the number because the gauge draws them in different type sizes.
     public static func unitLabel(_ value: Double, unit: MetricUnit) -> String {
         switch unit {
-        case .bytes, .bytesPerSecond:
-            let text = bytes(value, perSecond: unit == .bytesPerSecond)
+        case .bytes:
+            let text = bytes(value)
             return text.split(separator: " ").last.map(String.init) ?? ""
+        case .bytesPerSecond: return "MB/s"
+        case .bitsPerSecond: return "Mbit/s"
         case .fraction: return "%"
         case .operationsPerSecond: return "IO/s"
         case .seconds: return value >= 1 ? "s" : (value >= 0.001 ? "ms" : "µs")
@@ -73,9 +117,10 @@ public enum Format {
     /// Just the number part, for a gauge readout whose unit is drawn separately.
     public static func magnitude(_ value: Double, unit: MetricUnit) -> String {
         switch unit {
-        case .bytes, .bytesPerSecond:
-            let text = bytes(value, perSecond: false)
+        case .bytes:
+            let text = bytes(value)
             return text.split(separator: " ").first.map(String.init) ?? "0"
+        case .bytesPerSecond, .bitsPerSecond: return throughput(value)
         case .fraction: return "\(Int((value * 100).rounded()))"
         case .seconds:
             if value >= 1 { return String(format: "%.2f", value) }
