@@ -77,7 +77,26 @@ rather than a stencil typeface.
 "a 4 lights b, c, f and g" is a fact about the display rather than about drawing
 and can be tested without a screen. `SevenSegmentText` in MonitorUI draws it.
 
-Two details are load-bearing:
+### The field is fixed at `xxxx.yy`
+
+`Format.readout` right-aligns into four integer digits, a point, and two
+decimals — `   4.23`, `  43.70`, `5012.66` — padded with blanks, never zeros
+(`0004.23` reads as a part number).
+
+The point never moving is the whole point. A readout you glance at is read partly
+by *position*: if the point slides left as the value grows, `4.23` and `43.7`
+occupy the same pixels with different meanings and you have to read all of it to
+know which you are looking at. Nailed down, the shape of the number carries its
+magnitude.
+
+Four integer digits rather than three so the field cannot overflow on real
+hardware — an internal SSD reads at around 5000 MB/s, which three digits could
+not show at all. 9999.99 covers that and a 10 Gbit link, so the overflow pattern
+(`----.--`, same width, so the display cannot jump) exists for completeness
+rather than because anything reaches it. This is also why disk can stay pinned to
+MB/s instead of switching to GB/s at the top end.
+
+Three details are load-bearing:
 
 - **Every cell reserves room for its decimal point**, lit or not, exactly as a
   physical part does. Claiming the space only when the point is lit would make
@@ -85,6 +104,10 @@ Two details are load-bearing:
   a decade is the thing the display exists to prevent. The final cell is the one
   exception — a ghost dot with nothing after it reads as a lit point, turning
   `245` into `245.`.
+- **A blank cell gets no ghosts.** A blank is a *position*, not a digit, and
+  ghosting it draws a faint 8 where no digit is — so the three leading blanks of
+  `   4.23` read as digits at a glance. The cell still claims its width, so the
+  field stays fixed either way.
 - **There is no `.contentTransition(.numericText())`.** `Canvas` draws
   imperatively from what its closure reads, so SwiftUI cannot interpolate
   between two readings. The value snaps, which is what an LCD does; the needle
@@ -92,6 +115,36 @@ Two details are load-bearing:
 
 The unit beneath the digits stays ordinary type, because "Mbit/s" is not
 expressible in seven segments.
+
+Six cells is most of the width of the dial face, which has two consequences.
+The dial's **label sits under the dial** rather than on its face — at 130pt
+across, "Network Out" on the face ran into the ticks — and it replaced the value
+caption that used to sit there, which only repeated what the readout already
+says. And the dial's end tick labels moved in to `0.54r`: at `0.62r` they ran
+underneath the readout, and the fixed field is too wide to give the horizontal
+room back, so they clear it vertically instead.
+
+## Density: how much fits on screen
+
+`Theme.Layout` gathers every size that decides how much of the dashboard is
+visible at once, because they are one decision rather than eight.
+
+What made only four cards visible was not card height — it was the **column
+count**. A 380pt minimum card width in a 1156pt content area fits *two* columns,
+so seven cards needed four rows. Halving that minimum gives four columns and the
+same seven cards land in two rows. So the charts are barely shorter than they
+were: the width came down by half, the height did not have to.
+
+That distinction matters because the premise of the app is charts big enough to
+read. Activity Monitor's are not, and shrinking far enough lands in the same
+place — a literal half-of-both-dimensions left five cramped columns, legends
+wrapped to `Tota l` and `Efficien cy`, time labels colliding into
+`9:56:46 AM9:57:16 AM`, and a third of the window empty.
+
+`chartMinimum` is the number to raise first if the density has gone too far,
+since chart width is what the time axis needs. `chartMinHeight` is a *minimum*,
+so a shorter window scrolls rather than squashing the charts — the right way
+round: the charts stay readable and the window decides how many you see at once.
 
 ## Which cards appear, and what they are bounded by
 

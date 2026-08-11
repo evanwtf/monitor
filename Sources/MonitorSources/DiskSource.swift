@@ -44,11 +44,11 @@ public final class DiskSource: MetricSource, @unchecked Sendable {
                 unit: .operationsPerSecond
             ),
             MetricDescriptor(
-                id: Self.readLatency, name: "Read latency", group: "Disk Latency",
+                id: Self.readLatency, name: "Read", group: "Disk Latency",
                 unit: .seconds
             ),
             MetricDescriptor(
-                id: Self.writeLatency, name: "Write latency", group: "Disk Latency",
+                id: Self.writeLatency, name: "Write", group: "Disk Latency",
                 unit: .seconds
             ),
         ]

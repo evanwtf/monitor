@@ -18,12 +18,12 @@ public struct DashboardView: View {
 
     public var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: Theme.Layout.gridSpacing) {
                 gaugeWall
                 Divider().overlay(Theme.panelEdge)
                 charts
             }
-            .padding(20)
+            .padding(Theme.Layout.pagePadding)
         }
         .background(Theme.background)
         .toolbar { toolbar }
@@ -47,12 +47,18 @@ public struct DashboardView: View {
 
     private var gaugeWall: some View {
         LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 160, maximum: 240), spacing: 16)],
-            spacing: 16
+            columns: [GridItem(
+                .adaptive(
+                    minimum: Theme.Layout.gaugeMinimum,
+                    maximum: Theme.Layout.gaugeMaximum
+                ),
+                spacing: Theme.Layout.gridSpacing
+            )],
+            spacing: Theme.Layout.gridSpacing
         ) {
             ForEach(gaugeMetrics, id: \.self) { metric in
                 if let descriptor = model.descriptor(metric) {
-                    VStack(spacing: 4) {
+                    VStack(spacing: 2) {
                         GaugeView(
                             title: gaugeTitle(descriptor),
                             value: model.latest(metric),
@@ -63,10 +69,19 @@ public struct DashboardView: View {
                             // it is still moving when the next sample arrives.
                             travelTime: model.interval
                         )
-                        Text(Format.value(model.latest(metric), unit: descriptor.unit))
-                            .font(.system(size: 11, design: .rounded))
-                            .monospacedDigit()
+                        // The dial's label, not its value. The readout on the
+                        // face already carries the number and its unit, so
+                        // repeating it here was the only thing under the dial
+                        // — and the label had to come off the face, where at
+                        // 130pt across "Network Out" ran into the ticks.
+                        Text(gaugeTitle(descriptor).uppercased())
+                            .font(.system(
+                                size: Theme.Layout.gaugeCaption,
+                                weight: .medium,
+                                design: .rounded
+                            ))
                             .foregroundStyle(Theme.label)
+                            .lineLimit(1)
                     }
                 }
             }
@@ -108,8 +123,10 @@ public struct DashboardView: View {
 
     private var charts: some View {
         LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 380), spacing: 16)],
-            spacing: 16
+            columns: [GridItem(
+                .adaptive(minimum: Theme.Layout.chartMinimum), spacing: Theme.Layout.gridSpacing
+            )],
+            spacing: Theme.Layout.gridSpacing
         ) {
             ForEach(chartGroups, id: \.name) { group in
                 ChartCard(

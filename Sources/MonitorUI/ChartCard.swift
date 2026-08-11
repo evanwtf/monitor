@@ -27,7 +27,7 @@ public struct ChartCard: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
             header
             if isUnavailable {
                 unavailableNotice
@@ -35,10 +35,10 @@ public struct ChartCard: View {
                 chart
             }
         }
-        .padding(14)
-        .background(Theme.panel, in: RoundedRectangle(cornerRadius: 10))
+        .padding(Theme.Layout.cardPadding)
+        .background(Theme.panel, in: RoundedRectangle(cornerRadius: Theme.Layout.cardCorner))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: Theme.Layout.cardCorner)
                 .strokeBorder(Theme.panelEdge.opacity(0.5), lineWidth: 1)
         )
     }
@@ -46,9 +46,15 @@ public struct ChartCard: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .font(.system(
+                    size: Theme.Layout.cardTitle,
+                    weight: .semibold,
+                    design: .rounded
+                ))
                 .foregroundStyle(Theme.readout)
-            Spacer()
+                .lineLimit(1)
+                .fixedSize()
+            Spacer(minLength: 4)
             // Current values in the header rather than in a legend below the
             // chart: the number and its colour swatch belong together, and it
             // saves a row of chrome per card.
@@ -60,11 +66,13 @@ public struct ChartCard: View {
                             .frame(width: 7, height: 7)
                         Text(entry.descriptor.name)
                             .foregroundStyle(Theme.label)
+                            .lineLimit(1)
                         Text(Format.value(latest.value, unit: entry.descriptor.unit))
                             .foregroundStyle(Theme.readout)
                             .monospacedDigit()
+                            .lineLimit(1)
                     }
-                    .font(.system(size: 11, design: .rounded))
+                    .font(.system(size: Theme.Layout.cardLegend, design: .rounded))
                 }
             }
         }
@@ -77,9 +85,9 @@ public struct ChartCard: View {
             Image(systemName: "exclamationmark.triangle")
             Text("Not available on this machine")
         }
-        .font(.system(size: 11))
+        .font(.system(size: Theme.Layout.cardLegend))
         .foregroundStyle(Theme.label)
-        .frame(maxWidth: .infinity, minHeight: 120)
+        .frame(maxWidth: .infinity, minHeight: Theme.Layout.chartMinHeight)
     }
 
     /// Points inside the visible window, per series.
@@ -133,21 +141,21 @@ public struct ChartCard: View {
                        let unit = series.first?.descriptor.unit
                     {
                         Text(Format.axisLabel(value, unit: unit))
-                            .font(.system(size: 9, design: .rounded))
+                            .font(.system(size: Theme.Layout.axisLabel, design: .rounded))
                             .foregroundStyle(Theme.label)
                     }
                 }
             }
         }
         .chartXAxis {
-            AxisMarks { _ in
+            AxisMarks(values: .automatic(desiredCount: 3)) { _ in
                 AxisGridLine().foregroundStyle(Theme.panelEdge.opacity(0.3))
-                AxisValueLabel()
-                    .font(.system(size: 9, design: .rounded))
+                AxisValueLabel(format: .dateTime.hour().minute(), centered: false)
+                    .font(.system(size: Theme.Layout.axisLabel, design: .rounded))
                     .foregroundStyle(Theme.label)
             }
         }
-        .frame(minHeight: 140)
+        .frame(minHeight: Theme.Layout.chartMinHeight)
     }
 
     /// The visible time span, as raw timestamps.

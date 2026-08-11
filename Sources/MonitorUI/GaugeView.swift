@@ -154,7 +154,6 @@ public struct GaugeView: View {
                     .animation(.easeOut(duration: travelTime), value: fraction)
 
                 hub(radius: radius)
-                title(radius: radius)
                 readout(radius: radius)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
@@ -174,16 +173,14 @@ public struct GaugeView: View {
             .frame(width: radius * 0.2, height: radius * 0.2)
     }
 
-    private func title(radius: Double) -> some View {
-        Text(title.uppercased())
-            .font(.system(size: max(9, radius * 0.15), weight: .medium, design: .rounded))
-            .foregroundStyle(Theme.readout)
-            .offset(y: -radius * 0.42)
-    }
-
     /// The digital inset: seven-segment digits over a recessed panel, with the
     /// unit spelled out underneath in ordinary type because "Mbit/s" is not
     /// expressible in seven segments.
+    ///
+    /// Wide, because the field is fixed at `xxxx.yy` — six cells whether or not
+    /// the value needs them, so the decimal point never moves. That is most of
+    /// the width of the dial face, which is why the dial's own label sits under
+    /// the dial rather than on it.
     ///
     /// There is no `.contentTransition(.numericText())` here, unlike the type
     /// this replaced. `Canvas` draws imperatively from what its closure reads,
@@ -191,20 +188,20 @@ public struct GaugeView: View {
     /// pretending to be an LCD should snap to its new value anyway. The needle
     /// beside it carries the continuity.
     private func readout(radius: Double) -> some View {
-        VStack(spacing: radius * 0.015) {
-            SevenSegmentText(Format.magnitude(value, unit: unit))
-                .frame(width: radius * 0.56, height: radius * 0.19)
+        VStack(spacing: radius * 0.01) {
+            SevenSegmentText(Format.readout(value, unit: unit))
+                .frame(width: radius * 0.80, height: radius * 0.16)
             Text(Format.unitLabel(value, unit: unit))
-                .font(.system(size: radius * 0.09, design: .rounded))
+                .font(.system(size: radius * 0.085, design: .rounded))
                 .foregroundStyle(Theme.label)
         }
-        .frame(width: radius * 0.68, height: radius * 0.36)
+        .frame(width: radius * 0.86, height: radius * 0.32)
         .background(Theme.lcdPanel, in: RoundedRectangle(cornerRadius: radius * 0.05))
         .overlay(
             RoundedRectangle(cornerRadius: radius * 0.05)
                 .strokeBorder(Color(white: 0.30), lineWidth: 1)
         )
-        .offset(y: radius * 0.46)
+        .offset(y: radius * 0.50)
     }
 
     // MARK: - Static face
@@ -266,12 +263,17 @@ public struct GaugeView: View {
 
         // Label only the ends and the middle. A dial labelled at every tick is
         // a table with a needle on it.
+        //
+        // 0.54 rather than further out because the end labels sit at the lower
+        // left and lower right, where the readout is: at 0.62 they ran under it,
+        // and the fixed `xxxx.yy` field is too wide to give the horizontal room
+        // back. Here they clear it vertically instead.
         for fraction in [0.0, 0.5, 1.0] {
             let labelAngle = dialStart + Angle(degrees: dialSweep.degrees * fraction)
             let text = Text(Format.tickLabel(fullScale * fraction, unit: unit))
                 .font(.system(size: max(8, radius * 0.09), design: .rounded))
                 .foregroundStyle(Theme.label)
-            context.draw(text, at: point(center, radius * 0.55, labelAngle))
+            context.draw(text, at: point(center, radius * 0.54, labelAngle))
         }
     }
 

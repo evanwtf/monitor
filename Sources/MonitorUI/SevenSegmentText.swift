@@ -46,7 +46,12 @@ public struct SevenSegmentText: View {
                     glyph: glyph, at: Double(index) * Geometry.advance,
                     origin: origin, scale: scale,
                     lit: &lit, unlit: &unlit,
-                    includeUnlit: ghost != nil,
+                    // A blank cell is a *position*, not a digit, so it gets no
+                    // ghosts. Ghosting it draws a faint 8 where no digit is,
+                    // and in a fixed field like `   4.23` the three leading
+                    // blanks then read as digits at a glance. The cell still
+                    // takes its width, so the field stays fixed either way.
+                    includeUnlit: ghost != nil && !glyph.mask.isEmpty,
                     // A ghost dot after the final digit reads as a lit decimal
                     // point at a glance, turning `245` into `245.`. Nothing can
                     // follow it, so nothing needs to hold its place.
@@ -93,6 +98,10 @@ public struct SevenSegmentText: View {
         /// to neither, and `2.35` becomes a number you have to look at twice;
         /// tucked against the digit it follows, it is unambiguous.
         static let pointInset = 0.012
+        /// Diameter of the decimal point, a little fatter than a bar. On a
+        /// small dial the readout renders at about 12pt and a point the width
+        /// of a segment disappears — which turns `5012.66` into `501266`.
+        static let pointSize = 0.19
         /// Horizontal shift at the top of a cell: the lean of an LCD digit.
         static let slant = 0.07
 
@@ -193,8 +202,8 @@ public struct SevenSegmentText: View {
             // The decimal point sits on the baseline, tucked against the digit
             // it belongs to.
             let dot = CGRect(
-                origin: map(width + pointInset, 1 - thickness),
-                size: CGSize(width: thickness * scale, height: thickness * scale)
+                origin: map(width + pointInset, 1 - pointSize),
+                size: CGSize(width: pointSize * scale, height: pointSize * scale)
             )
             let dotPath = Path(ellipseIn: dot)
             if glyph.point {
