@@ -311,6 +311,46 @@ struct FormatTests {
         #expect(Format.value(1_500_000, unit: .bytes) == "1.5 MB")
     }
 
+    /// The property the fixed field exists for: whatever the magnitude, the
+    /// readout is the same width and the point is in the same column. A point
+    /// that slides means `4.23` and `43.7` occupy the same pixels with different
+    /// meanings, so you have to read the whole number to know which it is.
+    @Test("the readout is a fixed field with an immovable decimal point")
+    func fixedReadoutField() {
+        let values = [0.0, 20000.0, 4_230_000.0, 43_700_000.0, 999_000_000.0, 5_012_660_000.0]
+        let fields = values.map { Format.readout($0, unit: .bytesPerSecond) }
+
+        #expect(fields == ["   0.00", "   0.02", "   4.23", "  43.70", " 999.00", "5012.66"])
+        #expect(Set(fields.map(\.count)).count == 1, "the field changed width")
+        #expect(
+            Set(fields.map { $0.distance(from: $0.startIndex, to: $0.firstIndex(of: ".")!) })
+                .count == 1,
+            "the decimal point moved"
+        )
+    }
+
+    /// Space-padded, not zero-padded: `0004.23` reads as a part number.
+    @Test("the readout pads with blanks rather than zeros")
+    func readoutPadding() {
+        #expect(Format.readout(4_230_000, unit: .bitsPerSecond).hasPrefix("   "))
+        #expect(!Format.readout(4_230_000, unit: .bitsPerSecond).hasPrefix("000"))
+    }
+
+    /// Four integer digits so an SSD at 5000 MB/s fits. The overflow pattern is
+    /// there for completeness rather than because anything reaches it — and it
+    /// keeps the field width, so the display cannot jump if it ever does.
+    @Test("the readout field holds a fast SSD, and says so when it cannot")
+    func readoutCeiling() {
+        #expect(Format.readout(9_999_000_000, unit: .bytesPerSecond) == "9999.00")
+        #expect(Format.readout(10_000_000_000, unit: .bytesPerSecond) == "----.--")
+        // Would round up to 10000.00 and shift the point, so it counts as over.
+        #expect(Format.readout(9_999_996_000, unit: .bytesPerSecond) == "----.--")
+        #expect(
+            Format.readout(10_000_000_000, unit: .bytesPerSecond).count
+                == Format.readout(0, unit: .bytesPerSecond).count
+        )
+    }
+
     /// A tick is a landmark, not a measurement — the digits live in the
     /// readout below the needle.
     @Test("dial ticks are coarser than the readout")

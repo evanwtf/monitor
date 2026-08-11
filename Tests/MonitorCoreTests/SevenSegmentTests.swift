@@ -73,6 +73,21 @@ struct SevenSegmentTests {
         #expect(glyphs[1].mask == SevenSegment.mask(for: "5"))
     }
 
+    /// A blank holds its cell. That is what lets the gauge's `xxxx.yy` field
+    /// keep the decimal point in one place: the leading blanks of `   4.23`
+    /// occupy the same three cells that `5012` fills.
+    @Test("a blank takes a cell so a fixed field stays aligned")
+    func blanksHoldTheirCell() {
+        let small = SevenSegment.glyphs(for: "   4.23")
+        let large = SevenSegment.glyphs(for: "5012.66")
+        #expect(small.count == large.count)
+        #expect(small.firstIndex(where: \.point) == large.firstIndex(where: \.point))
+        // Hoisted out of `#expect`: the macro expansion cannot digest a nested
+        // key path, and swiftformat rewrites the equivalent closure into one.
+        let leadingCellsAreBlank = small.prefix(3).allSatisfy(\.mask.isEmpty)
+        #expect(leadingCellsAreBlank)
+    }
+
     @Test("unshowable characters are dropped from a run")
     func runSkipsUnknown() {
         #expect(SevenSegment.glyphs(for: "12 MB").map(\.mask) == [

@@ -22,7 +22,7 @@ monitor live. Persistence and a background sampler come later — see
 - System APIs: mach (`host_processor_info`, `host_statistics64`), IOKit
   (`IOBlockStorageDriver`, `IOAccelerator`), `getifaddrs`, `sysctl`,
   SystemConfiguration (`SCNetworkInterfaceCopyAll`).
-- Tests use swift-testing (`@Test`, `#expect`), not XCTest — 64 tests in 10 suites.
+- Tests use swift-testing (`@Test`, `#expect`), not XCTest.
 - swiftformat (`.swiftformat`) for lint. CI runs on a self-hosted macOS ARM64
   runner.
 
@@ -51,8 +51,8 @@ Sources/
                    to read.
   MonitorSources/  the readers: CPU, memory, disk, network, GPU, and the registry
                    that lists them. One file per source.
-  MonitorUI/       Theme, GaugeView, SevenSegmentText, ChartCard, DashboardView,
-                   AppModel
+  MonitorUI/       Theme (palette + Layout density), GaugeView, SevenSegmentText,
+                   ChartCard, DashboardView, AppModel
   MonitorStore/    SQLite history and retention. Designed and tested but NOT
                    linked into the app — see "Guardrails" below.
   monitor/         the app target (@main SwiftUI App)
@@ -77,9 +77,10 @@ docs/              README.md is the index
   falls slowly, stepping down only once the value has stayed clear of the next
   scale down for a continuous `decayInterval`.
 - **Throughput units are pinned.** Disk is always MB/s, network always Mbit/s,
-  at every magnitude. The unit under a needle must not change while you are
-  reading it. Network converts bytes to bits *in the source*, so the dial, the
-  chart axis and `monitorctl` cannot disagree about it.
+  at every magnitude, and the gauge readout is a fixed `xxxx.yy` field whose
+  decimal point never moves. The unit under a needle must not change while you
+  are reading it. Network converts bytes to bits *in the source*, so the dial,
+  the chart axis and `monitorctl` cannot disagree about it.
 - **Network counts physical NICs only** — Wi-Fi and wired, via
   `SCNetworkInterfaceCopyAll` filtered to the Ethernet and IEEE80211 types.
   Summing every `getifaddrs` interface double-counts a VPN's traffic (once on

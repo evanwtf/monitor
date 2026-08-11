@@ -61,6 +61,46 @@ public enum Format {
         return String(format: "%.0f µs", seconds * 1_000_000)
     }
 
+    /// Digits either side of the point in a gauge's readout: `xxxx.yy`.
+    ///
+    /// Four rather than three so the field cannot overflow on real hardware. An
+    /// internal SSD reads at around 5000 MB/s, which a three-digit field could
+    /// not show at all; 9999.99 covers that and a 10 Gbit link, so the overflow
+    /// case is unreachable rather than merely handled.
+    public static let readoutIntegerDigits = 4
+    public static let readoutFractionDigits = 2
+
+    /// A gauge's readout as a fixed field, right-aligned and space-padded, with
+    /// the decimal point in the same place at every magnitude.
+    ///
+    /// The point staying put is the whole reason this is not just `throughput`.
+    /// A readout you glance at is read partly by *position*: if the point slides
+    /// left as the value grows, then `4.23` and `43.7` occupy the same pixels
+    /// with different meanings, and you have to read all of it to know which you
+    /// are looking at. Nailing the point down means the integer part always
+    /// starts and ends in the same place, so the shape of the number carries its
+    /// magnitude.
+    ///
+    /// Padded with spaces rather than zeros: `0004.23` reads as a part number.
+    public static func readout(_ value: Double, unit: MetricUnit) -> String {
+        switch unit {
+        case .bytesPerSecond, .bitsPerSecond:
+            let scaled = value / throughputDivisor
+            let width = readoutIntegerDigits + 1 + readoutFractionDigits
+            // The limit is what rounds *up* out of the field, not what exceeds
+            // it: 9999.996 would print as 10000.00 and shift the point.
+            let ceiling = pow(10, Double(readoutIntegerDigits))
+                - 0.5 * pow(10, -Double(readoutFractionDigits))
+            guard scaled >= 0, scaled < ceiling else {
+                return String(repeating: "-", count: readoutIntegerDigits)
+                    + "." + String(repeating: "-", count: readoutFractionDigits)
+            }
+            return String(format: "%\(width).\(readoutFractionDigits)f", scaled)
+        default:
+            return magnitude(value, unit: unit)
+        }
+    }
+
     /// A dial's tick label, which is coarser than the readout on purpose.
     ///
     /// A tick is a landmark, not a measurement — the readout below the needle

@@ -168,5 +168,6 @@ Throughput is pinned to mega-units at every magnitude, including `0.02 MB/s`
 and `5000 MB/s`. Auto-scaling suits an axis and not an instrument: the unit
 under a needle you are watching must not change while you are reading it, and a
 readout of `900` is useless until you have also read the word beneath it. The
-readout carries three significant figures, which keeps its width near-constant
-as the value moves — it lives in a fixed inset on the dial face.
+A chart axis and the CLI carry three significant figures, which keeps a value's
+width near-constant as it moves. The gauge readout goes further and uses a fixed
+`xxxx.yy` field so the decimal point never moves at all — see `docs/ui.md`.

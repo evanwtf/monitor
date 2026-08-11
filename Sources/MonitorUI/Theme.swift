@@ -7,6 +7,58 @@ import SwiftUI
 /// your eye all day is tiring, and a light needle on a dark dial is the higher
 /// contrast pairing for a thin moving element.
 public enum Theme {
+    /// Every size that decides how much of the dashboard fits on screen.
+    ///
+    /// Gathered here rather than spread across the views because they are one
+    /// decision, not eight: the panel is either dense enough to take in at a
+    /// glance without scrolling, or it is legible at arm's length, and moving
+    /// between those two means moving all of these together.
+    ///
+    /// Every size that decides how much of the dashboard fits on screen.
+    ///
+    /// What made only four cards visible was not card height — it was the
+    /// column count. A 380pt minimum in a 1156pt content width fits **two**
+    /// columns, so seven cards needed four rows. Halving that minimum gives
+    /// four columns and the same seven cards land in two rows, which is why the
+    /// charts here are barely shorter than they were: the width came down by
+    /// half, the height did not have to.
+    ///
+    /// That matters because the premise of the app is charts big enough to
+    /// read. Activity Monitor's are not, and shrinking far enough lands in the
+    /// same place — a literal half-of-both left five cramped columns, wrapped
+    /// legends, colliding time labels and a third of the window empty.
+    public enum Layout {
+        /// Gauge dials are square, so this is their height too.
+        public static let gaugeMinimum = 100.0
+        public static let gaugeMaximum = 130.0
+        /// Minimum chart card width. The grid fits as many columns as it can,
+        /// so this is really a column count in disguise: 260 gives four columns
+        /// at 1180pt and three at 900.
+        public static let chartMinimum = 260.0
+        /// The plot area alone, not counting the card's header and padding.
+        ///
+        /// Sized so that two rows of cards plus the gauge wall fill a 1180×900
+        /// window rather than leaving the bottom third empty. It is a *minimum*,
+        /// so a shorter window scrolls — which is the right way round: the
+        /// charts stay readable and the window decides how many you see at once.
+        public static let chartMinHeight = 250.0
+
+        public static let gridSpacing = 12.0
+        public static let pagePadding = 14.0
+        public static let cardPadding = 10.0
+        public static let cardCorner = 9.0
+
+        /// Type inside a card. At four columns a 13pt title and a row of legend
+        /// entries no longer share a line.
+        public static let cardTitle = 12.0
+        public static let cardLegend = 10.0
+        public static let axisLabel = 8.0
+        /// The dial's label, which sits under the dial rather than on its face:
+        /// at 130pt across there is no room on the face for "Network Out"
+        /// without it running into the ticks.
+        public static let gaugeCaption = 10.0
+    }
+
     public static let background = Color(red: 0.07, green: 0.07, blue: 0.08)
     public static let panel = Color(red: 0.12, green: 0.12, blue: 0.13)
     public static let panelEdge = Color(red: 0.28, green: 0.28, blue: 0.30)
