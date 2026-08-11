@@ -44,7 +44,7 @@ public final class AppModel {
         sampler = Sampler(sources: sources, sinks: [], interval: 0.5)
 
         for descriptor in all where Self.isGauge(descriptor) {
-            scales[descriptor.id] = GaugeScale(floor: Self.gaugeFloor(descriptor))
+            scales[descriptor.id] = Self.makeScale(descriptor)
         }
     }
 
@@ -120,18 +120,51 @@ public final class AppModel {
     /// needle would just wobble.
     static func isGauge(_ descriptor: MetricDescriptor) -> Bool {
         switch descriptor.unit {
-        case .bytesPerSecond, .operationsPerSecond: true
+        case .bytesPerSecond, .bitsPerSecond, .operationsPerSecond: true
         default: false
         }
     }
 
     /// A sensible smallest full scale per unit, so an idle gauge does not sit
     /// pinned at the top of a dial reading 200 bytes a second.
+    ///
+    /// Throughput starts at ten mega-somethings: 0–10 MB/s and 0–10 Mbit/s.
+    /// Those are the scales an idle machine spends nearly all its time on, so
+    /// they are the ones worth being able to read without checking.
     static func gaugeFloor(_ descriptor: MetricDescriptor) -> Double {
         switch descriptor.unit {
-        case .bytesPerSecond: 10_000_000
+        case .bytesPerSecond, .bitsPerSecond: 10_000_000
         case .operationsPerSecond: 100
         default: 1
+        }
+    }
+
+    /// How long a throughput dial holds a scale it was pushed up to.
+    ///
+    /// Ten minutes is long by the standards of the 15-second decay the other
+    /// gauges use, and deliberately so: the point of the high-water mark is
+    /// that a transfer you were watching does not erase its own evidence the
+    /// moment it finishes.
+    static let throughputDecay: TimeInterval = 600
+
+    /// Throughput dials climb decades and hold a high-water mark; everything
+    /// else keeps the 1-2-5 ladder and the short decay.
+    ///
+    /// The split is about whether the reader has the ladder in their head.
+    /// MB/s and Mbit/s come in tens, hundreds and thousands and are quoted that
+    /// way, so a decade dial is predictable enough to read from needle position
+    /// alone. Operations per second have no such convention, and pinning them
+    /// to decades would waste most of the sweep.
+    static func makeScale(_ descriptor: MetricDescriptor) -> GaugeScale {
+        switch descriptor.unit {
+        case .bytesPerSecond, .bitsPerSecond:
+            GaugeScale(
+                floor: gaugeFloor(descriptor),
+                decayInterval: throughputDecay,
+                ladder: .decade
+            )
+        default:
+            GaugeScale(floor: gaugeFloor(descriptor))
         }
     }
 }

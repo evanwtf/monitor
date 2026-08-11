@@ -40,8 +40,8 @@ public struct DashboardView: View {
         [
             MetricID("disk.bytes.read"),
             MetricID("disk.bytes.written"),
-            MetricID("net.bytes.in"),
-            MetricID("net.bytes.out"),
+            MetricID("net.bits.in"),
+            MetricID("net.bits.out"),
         ].filter { model.descriptor($0) != nil }
     }
 

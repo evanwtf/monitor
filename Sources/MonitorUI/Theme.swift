@@ -17,6 +17,22 @@ public enum Theme {
     public static let label = Color(white: 0.62)
     public static let readout = Color(white: 0.93)
 
+    /// The seven-segment readout inset in a dial face.
+    ///
+    /// Amber rather than the blue of the needle, so that at a glance the two
+    /// carry different information instead of reading as one blue smear. It is
+    /// also the one warm colour on the panel, which is what makes the readout
+    /// findable on a wall of otherwise identical dials.
+    public static let lcd = Color(red: 1.00, green: 0.71, blue: 0.24)
+    /// Unlit segments. Faint, but not invisible: seeing where the bars *would*
+    /// be is what makes the thing read as a display rather than as a stencil,
+    /// and it fixes the width of the readout so it cannot shift sideways as
+    /// digits come and go.
+    public static let lcdGhost = Color(red: 1.00, green: 0.71, blue: 0.24).opacity(0.11)
+    /// Behind the segments. Slightly warm and darker than the dial face, the
+    /// way a recessed panel actually looks.
+    public static let lcdPanel = Color(red: 0.07, green: 0.06, blue: 0.05)
+
     /// The needle. One colour for every gauge — a needle that changes colour
     /// per metric turns a dashboard into a fruit salad and stops the eye from
     /// reading position, which is the only thing a needle is for.

@@ -59,6 +59,41 @@ struct SourceTests {
         }
     }
 
+    /// The conversion lives in the source so that the dial, the chart axis and
+    /// `monitorctl` cannot disagree about whether a link is busy. If the
+    /// descriptor ever says bytes again, every one of those reads eight times
+    /// low without anything looking broken.
+    @Test("network throughput is declared and reported in bits")
+    func networkReportsBits() throws {
+        let source = NetworkSource()
+        let throughput = source.descriptors.filter { $0.group == "Network" }
+        #expect(throughput.count == 2)
+        #expect(throughput.allSatisfy { $0.unit == .bitsPerSecond })
+        #expect(Set(throughput.map(\.id)) == [NetworkSource.bitsIn, NetworkSource.bitsOut])
+
+        // Eight times the byte counter, read back from the same interfaces.
+        let bytes = try NetworkSource.readInterfaceTotals()
+        _ = try source.read(at: 0)
+        Thread.sleep(forTimeInterval: 0.2)
+        let batch = try source.read(at: 0.2)
+        for sample in batch.samples where sample.metric == NetworkSource.bitsIn {
+            // A rate, not a total, so this only bounds it: the machine cannot
+            // have received more bits since the first read than it had bytes
+            // times eight in total since boot.
+            #expect(sample.value <= bytes.bytesIn * 8 + 1)
+        }
+    }
+
+    /// Disk stays in bytes. Drives are quoted in bytes and networks in bits,
+    /// and the two dials sitting side by side must not both say "10" while
+    /// meaning different things.
+    @Test("disk throughput stays in bytes")
+    func diskReportsBytes() {
+        let throughput = DiskSource().descriptors.filter { $0.group == "Disk" }
+        #expect(throughput.count == 2)
+        #expect(throughput.allSatisfy { $0.unit == .bytesPerSecond })
+    }
+
     /// The GPU source reads undocumented IOKit keys, so it is allowed to be
     /// unavailable. What it is not allowed to do is invent a number.
     @Test("GPU either reads a plausible value or reports unavailable")

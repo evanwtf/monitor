@@ -76,12 +76,19 @@ constants live in a header that is not in IOKit's Swift module map.
 
 | id | Meaning |
 |----|---------|
-| `net.bytes.in`, `net.bytes.out` | throughput |
+| `net.bits.in`, `net.bits.out` | throughput, in **bits** per second |
 | `net.packets.in`, `net.packets.out` | packet rate |
 
 Only `AF_LINK` entries carry counters; an interface also has an `AF_INET` entry
 and counting both would double every byte. Loopback is excluded because it is
 the machine talking to itself and it swamps the chart during a build.
+
+The byte counters are multiplied by 8 and reported as bits. Every number anyone
+quotes about a network is in bits — a 1 Gbit port, a 300 Mbit service, an
+866 Mbit Wi-Fi link — so reporting bytes makes the reader divide by eight before
+they can tell whether a link is busy. The conversion happens in the source, not
+in the gauge, so the dial, the chart axis and `monitorctl` cannot disagree
+about it.
 
 ## GPU — `GPUSource`
 
@@ -103,7 +110,16 @@ two GPUs, one pinned and one idle is not "half loaded".
 | Unit | Axis behaviour |
 |------|----------------|
 | `fraction` | pinned to 0–1, never auto-scaled |
-| `bytes`, `bytesPerSecond` | decimal units (kB = 1000), matching Apple |
+| `bytes` | decimal units (kB = 1000), matching Apple, scaled to the data |
+| `bytesPerSecond` | decimal units, **always MB/s** — never rescaled |
+| `bitsPerSecond` | decimal units, **always Mbit/s** — never rescaled |
 | `operationsPerSecond`, `count`, `hertz` | scaled to the data |
 | `seconds` | µs / ms / s by magnitude |
 | `celsius`, `watts` | declared, not yet produced by any source |
+
+Throughput is pinned to mega-units at every magnitude, including `0.02 MB/s`
+and `5000 MB/s`. Auto-scaling suits an axis and not an instrument: the unit
+under a needle you are watching must not change while you are reading it, and a
+readout of `900` is useless until you have also read the word beneath it. The
+readout carries three significant figures, which keeps its width near-constant
+as the value moves — it lives in a fixed inset on the dial face.

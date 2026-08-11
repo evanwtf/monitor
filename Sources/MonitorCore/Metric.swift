@@ -16,7 +16,11 @@ public enum MetricUnit: String, Sendable, Codable {
     /// 0...1. Charts fix the y-axis to that range rather than to the data.
     case fraction
     case bytes
+    /// Disk throughput. Always shown in MB/s — drives are quoted in bytes.
     case bytesPerSecond
+    /// Network throughput. Always shown in Mbit/s — links are quoted in bits,
+    /// so reporting bytes forces a division by eight on every reading.
+    case bitsPerSecond
     case operationsPerSecond
     case count
     case hertz

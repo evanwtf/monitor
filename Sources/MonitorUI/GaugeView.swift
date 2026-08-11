@@ -181,23 +181,25 @@ public struct GaugeView: View {
             .offset(y: -radius * 0.42)
     }
 
+    /// The digital inset: seven-segment digits over a recessed panel, with the
+    /// unit spelled out underneath in ordinary type because "Mbit/s" is not
+    /// expressible in seven segments.
+    ///
+    /// There is no `.contentTransition(.numericText())` here, unlike the type
+    /// this replaced. `Canvas` draws imperatively from what its closure reads,
+    /// so SwiftUI cannot interpolate between two readings — and a display
+    /// pretending to be an LCD should snap to its new value anyway. The needle
+    /// beside it carries the continuity.
     private func readout(radius: Double) -> some View {
-        VStack(spacing: 0) {
-            Text(Format.magnitude(value, unit: unit))
-                // Monospaced digits so the readout does not twitch sideways as
-                // the value changes width, and a numeric transition so it rolls
-                // rather than snapping.
-                .font(.system(size: radius * 0.2, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .contentTransition(.numericText())
-                .foregroundStyle(Theme.readout)
+        VStack(spacing: radius * 0.015) {
+            SevenSegmentText(Format.magnitude(value, unit: unit))
+                .frame(width: radius * 0.56, height: radius * 0.19)
             Text(Format.unitLabel(value, unit: unit))
-                .font(.system(size: radius * 0.1, design: .rounded))
+                .font(.system(size: radius * 0.09, design: .rounded))
                 .foregroundStyle(Theme.label)
         }
-        .animation(.easeOut(duration: travelTime), value: value)
         .frame(width: radius * 0.68, height: radius * 0.36)
-        .background(Color(white: 0.08), in: RoundedRectangle(cornerRadius: radius * 0.05))
+        .background(Theme.lcdPanel, in: RoundedRectangle(cornerRadius: radius * 0.05))
         .overlay(
             RoundedRectangle(cornerRadius: radius * 0.05)
                 .strokeBorder(Color(white: 0.30), lineWidth: 1)
@@ -266,7 +268,7 @@ public struct GaugeView: View {
         // a table with a needle on it.
         for fraction in [0.0, 0.5, 1.0] {
             let labelAngle = dialStart + Angle(degrees: dialSweep.degrees * fraction)
-            let text = Text(Format.magnitude(fullScale * fraction, unit: unit))
+            let text = Text(Format.tickLabel(fullScale * fraction, unit: unit))
                 .font(.system(size: max(8, radius * 0.09), design: .rounded))
                 .foregroundStyle(Theme.label)
             context.draw(text, at: point(center, radius * 0.55, labelAngle))
@@ -289,14 +291,18 @@ public struct GaugeView: View {
 #Preview {
     HStack(spacing: 24) {
         GaugeView(
-            title: "Write", value: 420_000_000, fullScale: 1_000_000_000,
-            peak: 830_000_000, unit: .bytesPerSecond
+            title: "Disk Write", value: 4_230_000, fullScale: 10_000_000,
+            peak: 8_300_000, unit: .bytesPerSecond
         )
         GaugeView(
-            title: "Read", value: 90_000_000, fullScale: 1_000_000_000, unit: .bytesPerSecond
+            title: "Net In", value: 92_400_000, fullScale: 100_000_000,
+            peak: 96_000_000, unit: .bitsPerSecond
+        )
+        GaugeView(
+            title: "Net Out", value: 240_000, fullScale: 10_000_000, unit: .bitsPerSecond
         )
     }
     .padding(32)
-    .frame(width: 520, height: 280)
+    .frame(width: 780, height: 300)
     .background(Theme.background)
 }

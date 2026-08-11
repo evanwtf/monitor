@@ -2,7 +2,7 @@
 
 ## Gauges for rates, charts for levels
 
-`AppModel.isGauge` splits them by unit: `bytesPerSecond` and
+`AppModel.isGauge` splits them by unit: `bytesPerSecond`, `bitsPerSecond` and
 `operationsPerSecond` get a dial, everything else gets a chart.
 
 The split is not decorative. A dial answers *"how hard is this working right
@@ -19,19 +19,79 @@ fixed for either is useless for the other.
 
 `GaugeScale` handles it with two rules:
 
-**Snap full scale to 1, 2 or 5 times a power of ten.** An arbitrary full scale
-gives tick labels like 3.7 GB/s, which nobody reads at a glance. Snapping keeps
-them round, and ten major divisions always land on readable numbers.
+**Snap full scale to a ladder.** An arbitrary full scale gives tick labels like
+3.7 GB/s, which nobody reads at a glance. Snapping keeps them round, and ten
+major divisions always land on readable numbers. Which ladder is per-gauge:
+
+- `ScaleLadder.oneTwoFive` — 10, 20, 50, 100, 200, 500 … The default, and the
+  right choice when the range is genuinely unknown, because it keeps the needle
+  in a useful part of the sweep.
+- `ScaleLadder.decade` — 10, 100, 1000 … Used by the throughput dials. It gives
+  up resolution to buy predictability: MB/s and Mbit/s are quoted in tens,
+  hundreds and thousands, so a reader already has the ladder in their head and
+  needle position alone is enough.
 
 **Rise immediately, fall slowly.** Full scale jumps up the instant a reading
-exceeds it, but steps down only after a quiet trailing window (15 s by default).
-Otherwise the dial rescales the moment traffic stops and the needle appears to
-move when the value did not.
+exceeds it, but steps down only once the value has stayed below the next scale
+down for a continuous `decayInterval`. Otherwise the dial rescales the moment
+traffic stops and the needle appears to move when the value did not.
 
-The peak is tracked over a **trailing window, not since launch**. An all-time
-peak never decays, so one 900 MB/s spike at breakfast would pin the dial at
-1 GB/s for the rest of the day and every subsequent reading would sit uselessly
-against the stop. `GaugeScaleTests` pins this.
+## The throughput high-water mark
+
+Disk and network dials start at 0–10 MB/s and 0–10 Mbit/s, the scales an idle
+machine spends nearly all its time on. Past 10 the scale steps to 100, past 100
+to 1000.
+
+Coming down takes **ten minutes below 90% of the next scale down** — below
+9 Mbit on the way off the 100 scale. Two details matter:
+
+- The 10% band is hysteresis. Without it, a workload sitting at exactly full
+  scale rescales the dial forever, and the needle moves while the value does
+  not, which is the one thing a gauge must never do.
+- The clock measures *continuous* time below the threshold, not the peak of a
+  fixed window. A tumbling window cannot express this rule: the window holding
+  the spike also holds the evidence against coming down, so the dial would need
+  two full windows — twenty minutes for a ten-minute rule — before it moved.
+
+Once the quiet period is up the dial descends as far as the period's peak
+justifies, not one rung at a time: ten quiet minutes takes it from 1000 straight
+back to 10 rather than starting a half-hour walk down.
+
+None of it persists. A restart begins at 0–10 again, because v1 writes nothing
+to disk.
+
+The `peak` the dial marks is the highest reading since full scale last changed —
+the high-water mark that *explains* the current scale, which is what makes a
+raised scale readable when nothing is happening. `GaugeScaleTests` and
+`DecadeGaugeScaleTests` pin all of this.
+
+## The seven-segment readout
+
+The digital inset in each dial face is drawn as segments, not typeset. macOS
+ships no seven-segment font and this project takes no third-party dependencies,
+but a font would be the wrong tool regardless: it cannot draw the *unlit*
+segments, and those are what make the inset read as a panel with a display in it
+rather than a stencil typeface.
+
+`SevenSegment` in MonitorCore holds the character-to-segment mapping, because
+"a 4 lights b, c, f and g" is a fact about the display rather than about drawing
+and can be tested without a screen. `SevenSegmentText` in MonitorUI draws it.
+
+Two details are load-bearing:
+
+- **Every cell reserves room for its decimal point**, lit or not, exactly as a
+  physical part does. Claiming the space only when the point is lit would make
+  `2.35` wider than `235`, and a readout that changes width as its value crosses
+  a decade is the thing the display exists to prevent. The final cell is the one
+  exception — a ghost dot with nothing after it reads as a lit point, turning
+  `245` into `245.`.
+- **There is no `.contentTransition(.numericText())`.** `Canvas` draws
+  imperatively from what its closure reads, so SwiftUI cannot interpolate
+  between two readings. The value snaps, which is what an LCD does; the needle
+  beside it carries the continuity.
+
+The unit beneath the digits stays ordinary type, because "Mbit/s" is not
+expressible in seven segments.
 
 ## Why the needle is a Shape and not part of the Canvas
 

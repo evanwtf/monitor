@@ -21,7 +21,7 @@ monitor live. Persistence and a background sampler come later — see
 - SwiftUI, Swift Charts, `Canvas` for the gauges.
 - System APIs: mach (`host_processor_info`, `host_statistics64`), IOKit
   (`IOBlockStorageDriver`, `IOAccelerator`), `getifaddrs`, `sysctl`.
-- Tests use swift-testing (`@Test`, `#expect`), not XCTest — 33 tests in 7 suites.
+- Tests use swift-testing (`@Test`, `#expect`), not XCTest — 60 tests in 10 suites.
 - swiftformat (`.swiftformat`) for lint. CI runs on a self-hosted macOS ARM64
   runner.
 
@@ -45,11 +45,13 @@ look at it in the app.
 ```
 Sources/
   MonitorCore/     metric model, ring buffer, downsampling, gauge auto-ranging,
-                   formatting, the sampling clock. No macOS APIs — so all of it
-                   is testable without a machine to read.
+                   seven-segment digit mapping, formatting, the sampling clock.
+                   No macOS APIs — so all of it is testable without a machine
+                   to read.
   MonitorSources/  the readers: CPU, memory, disk, network, GPU, and the registry
                    that lists them. One file per source.
-  MonitorUI/       Theme, GaugeView, ChartCard, DashboardView, AppModel
+  MonitorUI/       Theme, GaugeView, SevenSegmentText, ChartCard, DashboardView,
+                   AppModel
   MonitorStore/    SQLite history and retention. Designed and tested but NOT
                    linked into the app — see "Guardrails" below.
   monitor/         the app target (@main SwiftUI App)
@@ -69,8 +71,14 @@ docs/              README.md is the index
   boot. `RateTracker` differentiates them. It returns nil for the first reading
   of a series on purpose, because there is no rate yet and reporting zero would
   draw a dip that did not happen.
-- **`GaugeScale`** auto-ranges a dial and snaps full scale to 1, 2 or 5 times a
-  power of ten. It rises immediately and falls slowly, over a trailing window.
+- **`GaugeScale`** auto-ranges a dial and snaps full scale to a `ScaleLadder` —
+  1-2-5 by default, decades for the throughput dials. It rises immediately and
+  falls slowly, stepping down only once the value has stayed clear of the next
+  scale down for a continuous `decayInterval`.
+- **Throughput units are pinned.** Disk is always MB/s, network always Mbit/s,
+  at every magnitude. The unit under a needle must not change while you are
+  reading it. Network converts bytes to bits *in the source*, so the dial, the
+  chart axis and `monitorctl` cannot disagree about it.
 - **Gauges are for rates, charts are for levels.** A dial answers "how hard is
   this working right now against what it can do" (disk, network throughput). A
   chart answers "what has been happening" (CPU, memory). `AppModel.isGauge`

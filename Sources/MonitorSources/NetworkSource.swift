@@ -7,11 +7,18 @@ import MonitorCore
 /// `getifaddrs` reports cumulative byte counts per interface, so the values are
 /// differentiated into rates. Loopback is excluded — it is real traffic, but it
 /// is the machine talking to itself and it swamps the chart during a build.
+///
+/// Throughput is reported in **bits**, not bytes. Every number anyone quotes
+/// about a network is in bits — a 1 Gbit port, a 300 Mbit service, an 866 Mbit
+/// Wi-Fi link — so a monitor reporting bytes makes the reader divide by eight
+/// before they can tell whether the link is busy. The conversion happens here,
+/// at the source, rather than in the gauge, so that the dial, the chart axis
+/// and `monitorctl` cannot disagree about it.
 public final class NetworkSource: MetricSource, @unchecked Sendable {
     public let id = "network"
 
-    public static let bytesIn = MetricID("net.bytes.in")
-    public static let bytesOut = MetricID("net.bytes.out")
+    public static let bitsIn = MetricID("net.bits.in")
+    public static let bitsOut = MetricID("net.bits.out")
     public static let packetsIn = MetricID("net.packets.in")
     public static let packetsOut = MetricID("net.packets.out")
 
@@ -22,10 +29,10 @@ public final class NetworkSource: MetricSource, @unchecked Sendable {
     public var descriptors: [MetricDescriptor] {
         [
             MetricDescriptor(
-                id: Self.bytesIn, name: "In", group: "Network", unit: .bytesPerSecond
+                id: Self.bitsIn, name: "In", group: "Network", unit: .bitsPerSecond
             ),
             MetricDescriptor(
-                id: Self.bytesOut, name: "Out", group: "Network", unit: .bytesPerSecond
+                id: Self.bitsOut, name: "Out", group: "Network", unit: .bitsPerSecond
             ),
             MetricDescriptor(
                 id: Self.packetsIn, name: "Packets in", group: "Network Packets",
@@ -41,9 +48,13 @@ public final class NetworkSource: MetricSource, @unchecked Sendable {
     public func read(at timestamp: TimeInterval) throws -> SampleBatch {
         let totals = try Self.readInterfaceTotals()
         var values: [MetricID: Double] = [:]
+        // Convert the byte counters to bits before differentiating rather than
+        // after. Both give the same answer, but scaling the cumulative total
+        // keeps a single definition of the counter this metric tracks, and
+        // `RateTracker` never sees a quantity in units the metric does not use.
         let pairs: [(MetricID, Double)] = [
-            (Self.bytesIn, totals.bytesIn),
-            (Self.bytesOut, totals.bytesOut),
+            (Self.bitsIn, totals.bytesIn * 8),
+            (Self.bitsOut, totals.bytesOut * 8),
             (Self.packetsIn, totals.packetsIn),
             (Self.packetsOut, totals.packetsOut),
         ]
