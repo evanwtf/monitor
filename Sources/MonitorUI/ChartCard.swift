@@ -43,27 +43,62 @@ public struct ChartCard: View {
         )
     }
 
+    /// Above this many series the legend gets its own line rather than sharing
+    /// one with the title.
+    ///
+    /// Three is what fits beside a title at the narrowest column the grid
+    /// makes. Memory has seven, and squeezed into the space left over they
+    /// wrapped four rows deep — or, before the legend could wrap at all,
+    /// compressed into a row of ellipses, which is what this fixes.
+    private static let inlineLegendLimit = 3
+
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title)
-                .font(.system(
-                    size: Theme.Layout.cardTitle,
-                    weight: .semibold,
-                    design: .rounded
-                ))
-                .foregroundStyle(Theme.readout)
-                .lineLimit(1)
-                .fixedSize()
-            Spacer(minLength: 4)
-            // Current values in the header rather than in a legend below the
-            // chart: the number and its colour swatch belong together, and it
-            // saves a row of chrome per card.
+        // Two arrangements, not one that adapts: a card with two series should
+        // keep the compact single line, and only the crowded card should spend
+        // a second line on chrome.
+        VStack(alignment: .leading, spacing: 4) {
+            if series.count > Self.inlineLegendLimit {
+                titleText
+                legend
+            } else {
+                HStack(alignment: .top, spacing: 8) {
+                    titleText
+                    Spacer(minLength: 0)
+                    legend
+                }
+            }
+        }
+    }
+
+    private var titleText: some View {
+        Text(title)
+            .font(.system(
+                size: Theme.Layout.cardTitle,
+                weight: .semibold,
+                design: .rounded
+            ))
+            .foregroundStyle(Theme.readout)
+            .lineLimit(1)
+            .fixedSize()
+    }
+
+    /// Current values in the header rather than in a legend below the chart:
+    /// the number and its colour swatch belong together, and it saves a row of
+    /// chrome per card.
+    ///
+    /// Wrapped rather than laid out in one line. An `HStack` given less width
+    /// than its children want compresses them, and compressed legend entries
+    /// truncate to nothing readable; `FlowLayout` spends card height instead,
+    /// which is the cheaper of the two.
+    private var legend: some View {
+        FlowLayout(horizontalSpacing: 10, verticalSpacing: 3) {
             ForEach(Array(series.enumerated()), id: \.offset) { index, entry in
                 if let latest = entry.points.last {
                     legendEntry(entry.descriptor, index: index, latest: latest)
                 }
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     /// One legend entry: colour swatch, series name, current value.

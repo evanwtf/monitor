@@ -50,11 +50,12 @@ public enum Theme {
         public static let chartMinimum = 260.0
         /// The plot area alone, not counting the card's header and padding.
         ///
-        /// Sized so that two rows of cards plus the gauge wall fill a 1180×900
-        /// window rather than leaving the bottom third empty. It is a *minimum*,
-        /// so a shorter window scrolls — which is the right way round: the
-        /// charts stay readable and the window decides how many you see at once.
-        public static let chartMinHeight = 250.0
+        /// Half what it was, because the panel now has two sections rather than
+        /// one: performance above the rule and sensors below it. At the old
+        /// height the sensor cards were always below the fold, and a chart you
+        /// have to scroll to reach is a chart you stop looking at. It is still a
+        /// *minimum*, so a shorter window scrolls rather than squeezing.
+        public static let chartMinHeight = 125.0
 
         public static let gridSpacing = 12.0
         public static let pagePadding = 14.0

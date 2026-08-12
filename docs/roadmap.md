@@ -40,9 +40,16 @@ a table, not a gauge.
 
 ## More sources
 
-- **Temperature and power.** Wanted, and the honest answer is that both need
-  either root (`powermetrics`) or private API (IOReport). Worth revisiting; see
-  the discussion in `GPUSource.swift` for the same trade.
+- ~~**Temperature and power.**~~ Done, and the assumption recorded here — that
+  both need root or private API — turned out to be wrong. The SMC gives
+  temperatures, fan speeds and two verified power rails to an ordinary user;
+  `powermetrics` and IOReport are only needed for what the SMC does not carry
+  (per-component watts, clock frequency). `docs/sensors.md` has the survey.
+- **Per-component power and clock frequency.** What is genuinely left behind
+  the private-API line: IOReport's Energy Model has per-core, GPU, ANE and DRAM
+  energy, and its P-state residencies are how an average clock is derived.
+  Same trade as `GPUSource.swift` discusses — an App Store build could not ship
+  it.
 - **Per-volume disk breakout.** Today all block devices are summed. The registry
   walk already visits each device separately, so this is mostly a UI question.
 - **Per-interface network breakout.** Same shape as above.

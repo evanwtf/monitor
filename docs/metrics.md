@@ -169,6 +169,33 @@ list of known spellings and a miss reports the source as unavailable rather than
 guessing. Utilization takes the maximum across accelerators, not the mean: with
 two GPUs, one pinned and one idle is not "half loaded".
 
+## Sensors — `SMCSource`
+
+The SMC, read unprivileged. Which metrics exist depends on the machine: a
+fanless laptop declares no fans, a desktop no battery temperature. Group
+`Temperature`, `Power` and `Fans` sit in their own section of the window, below
+the rule.
+
+| id | Meaning |
+|----|---------|
+| `sensor.temperature.cpu` | hottest CPU die sensor (`Tp…`/`Te…`, Intel `TC0P`) |
+| `sensor.temperature.gpu` | hottest GPU die sensor (`Tg…`, Intel `TG0P`) |
+| `sensor.temperature.storage` | internal SSD (`TH0…`) |
+| `sensor.temperature.battery` | battery pack (`TB…T`) |
+| `sensor.temperature.enclosure` | the case (`Ts…P`) |
+| `sensor.temperature.ambient` | intake air (`TA…P`), Intel Macs mostly |
+| `sensor.power.input` | DC input power (`PDTR`) |
+| `sensor.power.soc` | SoC package power (`PHPS`) |
+| `sensor.fan.N.speed` | fan N's actual speed (`FNAc`), full scale from `FNMx` |
+
+Temperatures report the **hottest** sensor in the group rather than the mean,
+because the hot spot is what throttles the machine. A key reading exactly 0 is
+treated as a sensor the model does not populate, not as a cold one.
+
+Only two of the SMC's fifty-five power keys are named, because only two could
+be checked against an independent measurement — `docs/sensors.md` records how,
+and what else a Mac exposes that this does not read.
+
 ## Units
 
 | Unit | Axis behaviour |
@@ -179,7 +206,8 @@ two GPUs, one pinned and one idle is not "half loaded".
 | `bitsPerSecond` | decimal units, **always Mbit/s** — never rescaled |
 | `operationsPerSecond`, `count`, `hertz` | scaled to the data |
 | `seconds` | µs / ms / s by magnitude |
-| `celsius`, `watts` | declared, not yet produced by any source |
+| `celsius` | pinned to 0–110 °C, the point where Apple silicon throttles |
+| `watts`, `rpm` | scaled to the data; a fan to its own maximum when the SMC reports one |
 
 Throughput is pinned to mega-units at every magnitude, including `0.02 MB/s`
 and `5000 MB/s`. Auto-scaling suits an axis and not an instrument: the unit

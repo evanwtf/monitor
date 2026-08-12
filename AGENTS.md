@@ -64,10 +64,11 @@ Sources/
                    seven-segment digit mapping, formatting, the sampling clock.
                    No macOS APIs — so all of it is testable without a machine
                    to read.
-  MonitorSources/  the readers: CPU, memory, disk, network, GPU, and the registry
-                   that lists them. One file per source.
+  MonitorSources/  the readers: CPU, memory, disk, network, GPU, SMC sensors
+                   (temperature, fans, power), and the registry that lists them.
+                   One file per source, plus SMC.swift for the SMC transport.
   MonitorUI/       Theme (palette + Layout density), GaugeView, SevenSegmentText,
-                   ChartCard, DashboardView, AppModel
+                   ChartCard, FlowLayout, DashboardView, AppModel
   MonitorStore/    SQLite history and retention. Designed and tested but NOT
                    linked into the app — see "Guardrails" below.
   monitor/         the app target (@main SwiftUI App) and its AppDelegate
@@ -118,6 +119,14 @@ are no component-level AGENTS.md files.
   batch lines up on the x-axis. A source that throws is logged and skipped for
   that tick only. `AppModel` samples at 0.5 s into a 1200-point ring buffer —
   ten minutes of history, all of it in memory.
+- **Sensors are found, not assumed.** `SMCSource` scans the SMC's key table at
+  launch and declares a metric only if this machine publishes sensors for it —
+  so a fanless Mac shows no Fans card rather than one reading zero, and an Intel
+  `TC0P` feeds the same CPU metric as Apple silicon's `Tp01`. Everything it
+  reads is unprivileged; root is needed only to *write* a key, which it cannot.
+  `docs/sensors.md` is the survey of what a Mac exposes and what it costs.
+- **The panel has two sections.** Performance above the rule, sensors below.
+  The sensor section vanishes on a machine that reports none of it.
 - **A missing sample means unavailable.** `AppModel` marks any descriptor that
   produced no sample this tick, minus the first-tick warm-up for rate metrics.
   That is how a card gets greyed out instead of drawing a flat zero line.
@@ -190,6 +199,10 @@ are no component-level AGENTS.md files.
 - `Sources/MonitorSources/CPUSource.swift` — `host_processor_info` allocates
   into the task's VM and the caller owns it. The `vm_deallocate` in the `defer`
   is not optional; without it the app leaks on every tick.
+- `Sources/MonitorSources/SMC.swift` — `SMCParameters` must match the driver's
+  struct byte for byte; a field added or reordered silently reads the wrong
+  offsets. Only two of the SMC's fifty-odd power keys are named, because only
+  those two were checked against an independent measurement (`docs/sensors.md`).
 - `Sources/MonitorSources/DiskSource.swift` — the statistics keys are string
   literals because the `kIOBlockStorageDriver…` constants live in a header that
   is not in IOKit's Swift module map. They are not typos.

@@ -275,6 +275,19 @@ struct FormatTests {
         #expect(Format.unitLabel(value, unit: .bytesPerSecond) == "MB/s")
     }
 
+    /// Sensor units carry their unit in the text, because a temperature and a
+    /// fan speed sharing an axis is exactly how "88" gets read as rpm.
+    @Test("sensor readings name their unit")
+    func sensorUnits() {
+        #expect(Format.value(88.4, unit: .celsius) == "88 °C")
+        #expect(Format.value(18.42, unit: .watts) == "18.4 W")
+        #expect(Format.value(2480.6, unit: .rpm) == "2481 rpm")
+        #expect(Format.unitLabel(2480, unit: .rpm) == "rpm")
+        // The reserved slot has to be at least as wide as the reading, or a
+        // legend entry grows as its value does and shoves the rest sideways.
+        #expect(Format.widestValue(unit: .rpm).count >= Format.value(9999, unit: .rpm).count)
+    }
+
     @Test("scales durations to readable units")
     func durations() {
         #expect(Format.duration(0.04) == "40.0 ms")

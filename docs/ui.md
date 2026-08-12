@@ -146,6 +146,36 @@ since chart width is what the time axis needs. `chartMinHeight` is a *minimum*,
 so a shorter window scrolls rather than squashing the charts — the right way
 round: the charts stay readable and the window decides how many you see at once.
 
+`chartMinHeight` later halved to 125pt, when the panel gained a second section.
+Sensors sit below performance, and at the old height every sensor card was below
+the fold — a chart you have to scroll to reach is one you stop looking at.
+
+## Two sections, one rule between them
+
+Performance above, sensors below, separated by the same 1pt rule that sits under
+the gauges. What the machine is doing and how hot it is getting are read at
+different moments and for different reasons, and in one grid the temperature
+card is something you hunt for among the throughput cards.
+
+The sensor section draws only what the machine reports and disappears entirely
+on a machine that reports none of it, which is why it is `if !groups(in:).
+isEmpty` rather than a fixed row: a fanless MacBook Air has no fans, and an
+empty card under a rule is worse than no rule.
+
+## Legends wrap; they do not shrink
+
+A card's legend is the series' colour, name and current value, laid out with
+`FlowLayout` — a `Layout` that packs entries left to right and wraps. An
+`HStack` given less width than its children want compresses them instead, and a
+compressed legend entry truncates: Memory's seven series in a four-column grid
+became a row of coloured dots followed by ellipses, which is what prompted this.
+
+Cards with more than three series put the legend on its own line so it gets the
+card's full width rather than what is left beside the title. Two- and
+three-series cards keep the compact single line, because spending a second line
+of chrome on a Disk card that reads `Read 0.36 MB/s  Write 0.00 MB/s` buys
+nothing.
+
 ## The gauge wall is resizable
 
 The rule between the dials and the charts is a drag handle. Pull it down and the

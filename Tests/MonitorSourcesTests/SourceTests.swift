@@ -234,6 +234,52 @@ struct SourceTests {
         }
     }
 
+    /// Sensors are the one source whose metric list differs per machine — a
+    /// fanless laptop has no fans, a Mac mini has no battery — so what is
+    /// asserted is that whatever it *does* declare, it can read, in range.
+    @Test("every sensor a machine declares reads a plausible value")
+    func sensors() throws {
+        let source = SMCSource()
+        guard !source.descriptors.isEmpty else { return } // no SMC on this machine
+        #expect(source.descriptors.allSatisfy {
+            ["Temperature", "Power", "Fans"].contains($0.group)
+        })
+
+        let batch = try source.read(at: 0)
+        let declared = Set(source.descriptors.map(\.id))
+        #expect(batch.samples.allSatisfy { declared.contains($0.metric) },
+                "a sample arrived for a metric that was never declared")
+
+        let units = Dictionary(
+            source.descriptors.map { ($0.id, $0.unit) }, uniquingKeysWith: { first, _ in first }
+        )
+        for sample in batch.samples {
+            switch units[sample.metric] {
+            // Nothing in a room is at absolute zero, and silicon that reached
+            // 150 °C would have shut the machine down.
+            case .celsius: #expect(sample.value > 0 && sample.value < 150,
+                                   "\(sample.metric) = \(sample.value) °C")
+            // Zero watts is real on a laptop running from its battery.
+            case .watts: #expect(sample.value >= 0 && sample.value < 1000,
+                                 "\(sample.metric) = \(sample.value) W")
+            case .rpm: #expect(sample.value >= 0 && sample.value < 20000,
+                               "\(sample.metric) = \(sample.value) rpm")
+            default: Issue.record("sensor \(sample.metric) has an unexpected unit")
+            }
+        }
+    }
+
+    /// The key name is the whole addressing scheme, so a code that does not
+    /// survive the round trip reads a different sensor than the one asked for.
+    @Test("SMC keys round-trip through their four-character code")
+    func smcKeyCodes() {
+        for name in ["Tp00", "TC0P", "F0Ac", "PDTR", "#KEY"] {
+            #expect(SMC.name(SMC.code(name)) == name)
+        }
+        // Type codes are space-padded on the wire and named without it.
+        #expect(SMC.name(SMC.code("flt ")) == "flt")
+    }
+
     @Test("one failing source does not stop the others")
     func samplerIsolatesFailures() async {
         struct Broken: MetricSource {

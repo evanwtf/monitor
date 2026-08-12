@@ -26,6 +26,9 @@ public enum MetricUnit: String, Sendable, Codable {
     case hertz
     case celsius
     case watts
+    /// Fan speed. Its own unit rather than `count`, because "3200" and
+    /// "3200 rpm" are not the same reading on a chart axis.
+    case rpm
     case seconds
 }
 

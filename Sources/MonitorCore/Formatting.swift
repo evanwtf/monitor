@@ -123,6 +123,7 @@ public enum Format {
         case .hertz: "9999 Hz"
         case .celsius: "999 °C"
         case .watts: "999.9 W"
+        case .rpm: "9999 rpm"
         case .seconds: "999.99 s"
         }
     }
@@ -172,6 +173,7 @@ public enum Format {
         case .hertz: rate(value, unit: " Hz")
         case .celsius: String(format: "%.0f °C", value)
         case .watts: String(format: "%.1f W", value)
+        case .rpm: String(format: "%.0f rpm", value)
         case .seconds: duration(value)
         }
     }
@@ -192,6 +194,7 @@ public enum Format {
         case .hertz: return "Hz"
         case .celsius: return "°C"
         case .watts: return "W"
+        case .rpm: return "rpm"
         }
     }
 
