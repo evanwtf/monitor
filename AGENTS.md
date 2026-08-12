@@ -49,6 +49,7 @@ swift run monitorctl read        # read every metric once
 swift run monitorctl watch --source disk --interval 0.5
 swift run monitorctl watch --json --count 5        # machine-readable, bounded
 swiftformat Sources Tests --lint --cache ignore    # CI lint gate
+Scripts/make-app.sh [dest]       # wrap the release binary in monitor.app
 ```
 
 `monitorctl` exists because sampling is the part most likely to be wrong and the
@@ -69,8 +70,9 @@ Sources/
                    ChartCard, DashboardView, AppModel
   MonitorStore/    SQLite history and retention. Designed and tested but NOT
                    linked into the app — see "Guardrails" below.
-  monitor/         the app target (@main SwiftUI App)
+  monitor/         the app target (@main SwiftUI App) and its AppDelegate
   monitorctl/      headless CLI harness
+Scripts/           make-app.sh, which builds monitor.app
 Tests/             MonitorCoreTests, MonitorSourcesTests, MonitorStoreTests
 docs/              README.md is the index
 .github/workflows/ci.yml   build, test, release build, CLI smoke test, lint
@@ -199,9 +201,12 @@ are no component-level AGENTS.md files.
 
 - **A rate metric shows nothing on the first tick**: correct by design. Counters
   need two readings. `monitorctl read` takes two ticks for this reason.
-- **The window opens behind other apps**: a bare SwiftPM executable has no
-  bundle identity, so macOS does not treat it as a foreground app. A packaging
-  matter, not a bug; a real `.app` bundle fixes it.
+- **The window opens behind other apps, or the app is missing from Cmd-Tab**:
+  the `AppDelegate` in `Sources/monitor/MonitorApp.swift` sets
+  `NSApp.setActivationPolicy(.regular)` at launch, which is what gives an
+  unbundled SwiftPM executable a Dock icon, a Cmd-Tab entry and a menu bar with
+  Cmd-Q. Do not remove it; without it the process launches as an accessory and
+  the only way to stop it is to interrupt the terminal.
 - **GPU card is greyed out**: this macOS version does not publish the
   `PerformanceStatistics` keys the source knows about. Add the new spelling to
   the candidate list in `GPUSource`.

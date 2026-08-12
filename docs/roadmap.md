@@ -23,10 +23,14 @@ Batched writes are mandatory, not optional. The endurance arithmetic is in
 
 ## A real `.app` bundle
 
-Today `monitor` is a bare SwiftPM executable. It works and it is a fast
-development loop, but it has no bundle identity, so macOS does not treat it as a
-foreground app and the window opens behind whatever is in front. A proper
-bundle brings an icon, an Info.plist, signing, notarization and a Dock identity.
+Mostly done. `Scripts/make-app.sh` wraps the release binary in `monitor.app`
+with an Info.plist and an ad-hoc signature, and the app asks for a foreground
+activation policy at launch, so even the bare `swift run monitor` build gets a
+Dock icon, a Cmd-Tab entry and Cmd-Q.
+
+What is left is distribution rather than behaviour: an icon, a Developer ID
+signature and notarization, which are what another Mac needs before it will open
+the app without a warning.
 
 ## Per-process attribution
 

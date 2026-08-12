@@ -22,7 +22,18 @@ step, not this one. See `docs/roadmap.md`.
 swift run monitor
 ```
 
-No Xcode project needed. That is the development loop.
+No Xcode project needed. That is the development loop. The app claims a
+foreground identity at launch, so it appears in Cmd-Tab and quits with Cmd-Q
+like anything else, even though it is a bare SwiftPM executable.
+
+To install it somewhere you can launch it from, build a real bundle:
+
+```sh
+Scripts/make-app.sh ~/Applications
+```
+
+That produces `monitor.app` — Info.plist, bundle id and an ad-hoc signature.
+It is not signed with a Developer ID or notarized, so it is for this Mac.
 
 There is also a headless CLI, which is how the sampling code gets developed and
 verified without a GUI in the way:
