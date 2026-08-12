@@ -22,10 +22,10 @@ struct FlowLayout: Layout {
     func sizeThatFits(
         proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()
     ) -> CGSize {
-        let rows = self.rows(within: proposal.width ?? .infinity, subviews: subviews)
-        let width = rows.map(\.width).max() ?? 0
-        let height = rows.map(\.height).reduce(0, +)
-            + verticalSpacing * CGFloat(max(0, rows.count - 1))
+        let packed = rows(within: proposal.width ?? .infinity, subviews: subviews)
+        let width = packed.map(\.width).max() ?? 0
+        let height = packed.map(\.height).reduce(0, +)
+            + verticalSpacing * CGFloat(max(0, packed.count - 1))
         return CGSize(width: width, height: height)
     }
 

@@ -56,15 +56,15 @@ public final class SMCSource: MetricSource, @unchecked Sendable {
     public let descriptors: [MetricDescriptor]
 
     public init() {
-        guard let smc = try? SMC() else {
-            self.smc = nil
+        guard let connection = try? SMC() else {
+            smc = nil
             sensors = []
             descriptors = []
             log.notice("SMC unavailable; sensor metrics will not be offered")
             return
         }
-        self.smc = smc
-        sensors = Self.discover(with: smc)
+        smc = connection
+        sensors = Self.discover(with: connection)
         descriptors = sensors.map(\.descriptor)
     }
 
