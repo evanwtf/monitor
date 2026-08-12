@@ -8,6 +8,10 @@ two things wrong: the charts are postage stamps, and the history begins the
 moment you open the app — so whatever weird blip you went looking for is exactly
 the thing it cannot show you.
 
+## Screenshot
+<img width="1470" height="923" alt="Screenshot 2026-08-12 at 10 55 01 AM" src="https://github.com/user-attachments/assets/cafed6c4-16ec-4af0-9d1b-45d0febf6542" />
+
+
 ## Status
 
 **v1: realtime, in memory, nothing written to disk.**
