@@ -10,8 +10,7 @@ and the history starts when you open the app.
 
 **v1 is realtime and writes nothing to disk.** History lives in a ring buffer in
 memory and dies with the process. That is a deliberate scope decision, not an
-oversight: the point of v1 is to see what the thing looks like and have it
-monitor live. Persistence and a background sampler come later — see
+oversight. Persistence and a background sampler come later — see
 `docs/roadmap.md`.
 
 ## Tech Stack
@@ -22,19 +21,34 @@ monitor live. Persistence and a background sampler come later — see
 - System APIs: mach (`host_processor_info`, `host_statistics64`), IOKit
   (`IOBlockStorageDriver`, `IOAccelerator`), `getifaddrs`, `sysctl`,
   SystemConfiguration (`SCNetworkInterfaceCopyAll`).
-- Tests use swift-testing (`@Test`, `#expect`), not XCTest.
+- Tests use swift-testing (`@Suite`, `@Test`, `#expect`), not XCTest.
 - swiftformat (`.swiftformat`) for lint. CI runs on a self-hosted macOS ARM64
   runner.
+- Logging is `os.Logger` via the package-wide `log` in `MonitorCore/Log.swift`
+  (subsystem `wtf.evan.monitor`). Only `monitorctl` prints, because printing is
+  its output.
+
+## Environment & Dependencies
+
+- A Mac running macOS 14 or later with a Swift 6 toolchain. Nothing else — the
+  package resolves no dependencies, so there is no install step.
+- `swiftformat` must be on `PATH` for the lint gate. CI installs it with
+  `brew install swiftformat` when it is missing.
+- `MonitorSourcesTests` read the real machine, so they need a real Mac. They
+  assert plausible ranges, not values, and pass whatever the machine is doing.
 
 ## Commands
 
 ```sh
 swift build && swift test        # build + full suite
+swift test --filter GaugeScale   # one suite or test
+swift build -c release           # CI also gates the release build
 swift run monitor                # the app — the fast dev loop, no Xcode needed
 swift run monitorctl list        # every source and the metrics it declares
 swift run monitorctl read        # read every metric once
 swift run monitorctl watch --source disk --interval 0.5
-swiftformat Sources Tests --lint --cache ignore   # CI lint gate
+swift run monitorctl watch --json --count 5        # machine-readable, bounded
+swiftformat Sources Tests --lint --cache ignore    # CI lint gate
 ```
 
 `monitorctl` exists because sampling is the part most likely to be wrong and the
@@ -59,7 +73,11 @@ Sources/
   monitorctl/      headless CLI harness
 Tests/             MonitorCoreTests, MonitorSourcesTests, MonitorStoreTests
 docs/              README.md is the index
+.github/workflows/ci.yml   build, test, release build, CLI smoke test, lint
 ```
+
+One SwiftPM package: one build and one test command cover all of it, so there
+are no component-level AGENTS.md files.
 
 ## Key Concepts
 
@@ -78,13 +96,13 @@ docs/              README.md is the index
   scale down for a continuous `decayInterval`.
 - **Throughput units are pinned.** Disk is always MB/s, network always Mbit/s,
   at every magnitude, and the gauge readout is a fixed `xxxx.yy` field whose
-  decimal point never moves. The unit under a needle must not change while you
-  are reading it. Network converts bytes to bits *in the source*, so the dial,
-  the chart axis and `monitorctl` cannot disagree about it.
+  decimal point never moves — the unit under a needle must not change while you
+  read it. Network converts bytes to bits *in the source*, so the dial, the
+  chart axis and `monitorctl` cannot disagree.
 - **Network counts physical NICs only** — Wi-Fi and wired, via
-  `SCNetworkInterfaceCopyAll` filtered to the Ethernet and IEEE80211 types.
-  Summing every `getifaddrs` interface double-counts a VPN's traffic (once on
-  `utun`, once on the `en` it leaves by) and adds AirDrop and Apple's internal
+  `SCNetworkInterfaceCopyAll` filtered to the Ethernet and IEEE80211 types, and
+  re-resolved every 10 s so a dongle appears. Summing every `getifaddrs`
+  interface double-counts a VPN's traffic and adds AirDrop and Apple's internal
   interfaces on top.
 - **CPU load is per cluster, not per core.** One series per `hw.perflevel`,
   keyed by level because the *name* differs across silicon ("Super" on M4,
@@ -93,7 +111,14 @@ docs/              README.md is the index
 - **Gauges are for rates, charts are for levels.** A dial answers "how hard is
   this working right now against what it can do" (disk, network throughput). A
   chart answers "what has been happening" (CPU, memory). `AppModel.isGauge`
-  encodes the split.
+  encodes the split, by unit: the per-second units get a dial.
+- **One clock.** `Sampler.tick(at:)` reads every source at one timestamp so a
+  batch lines up on the x-axis. A source that throws is logged and skipped for
+  that tick only. `AppModel` samples at 0.5 s into a 1200-point ring buffer —
+  ten minutes of history, all of it in memory.
+- **A missing sample means unavailable.** `AppModel` marks any descriptor that
+  produced no sample this tick, minus the first-tick warm-up for rate metrics.
+  That is how a card gets greyed out instead of drawing a flat zero line.
 
 ## Code Style & Patterns
 
@@ -106,6 +131,14 @@ docs/              README.md is the index
   must never look the same on a chart; the UI greys the card out instead.
 - Formatting lives in `Format`, not in views. The same number appears in a gauge
   readout, a tick label, a chart axis and CLI output, and they have to agree.
+- Sources are `final class … MetricSource, @unchecked Sendable`: each holds
+  mutable state between reads (previous ticks, a `RateTracker`, a cached
+  interface list) and the sampler is the only caller.
+- Every layout constant lives in `Theme.Layout`, not in the views. Card size,
+  column count and density are one decision, not eight.
+- Tests are one `@Suite` per area with `@Test` cases. `MonitorCoreTests` use
+  fixed inputs; `MonitorSourcesTests` read this machine and assert shape and
+  plausible range.
 
 ## Making Changes
 
@@ -134,12 +167,12 @@ docs/              README.md is the index
 ### Never
 
 - **Never make `monitor`, `MonitorUI` or `monitorctl` depend on
-  `MonitorStore`.** v1 writes nothing to disk, and the dependency graph is what
-  enforces it — the app has no code path that can reach the filesystem. This is
-  about SSD endurance: a monitor runs all day, every day, and a careless one
-  spends real write cycles on data nobody reads. Adding that dependency is a
-  deliberate product decision with an arithmetic argument behind it
-  (`docs/storage.md`), never a convenience during a refactor.
+  `MonitorStore`.** v1 writes nothing to disk, and the dependency graph in
+  `Package.swift` is what enforces it — the app has no code path that reaches
+  the filesystem. This is about SSD endurance: a monitor runs all day, every
+  day. Adding that dependency is a deliberate product decision with an
+  arithmetic argument behind it (`docs/storage.md`), never a convenience during
+  a refactor.
 - Never report a fabricated value when a source fails. Throw
   `MetricSourceError` and let the UI say "not available". A plausible wrong
   number in a monitoring tool is worse than a gap, because nobody checks it.
@@ -154,21 +187,29 @@ docs/              README.md is the index
   `powermetrics`, private IOReport) are worse; the file explains why.
 - `Sources/MonitorSources/CPUSource.swift` — `host_processor_info` allocates
   into the task's VM and the caller owns it. The `vm_deallocate` in the `defer`
-  is not optional; without it the app leaks on every tick, forever.
+  is not optional; without it the app leaks on every tick.
 - `Sources/MonitorSources/DiskSource.swift` — the statistics keys are string
   literals because the `kIOBlockStorageDriver…` constants live in a header that
   is not in IOKit's Swift module map. They are not typos.
+- `.github/workflows/ci.yml` — the jobs run on a Mac on a desk, so both are
+  guarded to skip pull requests from forks. Keep that condition on any job
+  added.
 
 ## Troubleshooting
 
 - **A rate metric shows nothing on the first tick**: correct by design. Counters
   need two readings. `monitorctl read` takes two ticks for this reason.
 - **The window opens behind other apps**: a bare SwiftPM executable has no
-  bundle identity, so macOS does not treat it as a foreground app. It is a
-  packaging matter, not a bug in the app; a real `.app` bundle fixes it.
+  bundle identity, so macOS does not treat it as a foreground app. A packaging
+  matter, not a bug; a real `.app` bundle fixes it.
 - **GPU card is greyed out**: this macOS version does not publish the
   `PerformanceStatistics` keys the source knows about. Add the new spelling to
   the candidate list in `GPUSource`.
+- **A pull request reports no CI**: it came from a fork, and the jobs skip fork
+  pull requests on purpose. Re-run from a branch in this repository.
+- **CPU shows no cluster series**: correct on a machine with one performance
+  level, or when the `hw.perflevel*` core counts do not sum to the core count.
+  `CPUSource.readClusters` returns empty rather than guess a wrong split.
 
 ## Agent Notes
 
