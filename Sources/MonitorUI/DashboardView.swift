@@ -37,7 +37,16 @@ public struct DashboardView: View {
             VStack(alignment: .leading, spacing: Theme.Layout.gridSpacing) {
                 gaugeWall
                 resizeHandle
-                charts
+                charts(Self.performanceGroupOrder)
+                // Sensors are a different question from performance. What the
+                // machine is doing and how hot it is getting are read at
+                // different moments and for different reasons, and mixing them
+                // into one grid means hunting for the temperature card among
+                // the throughput ones.
+                if !groups(in: Self.sensorGroupOrder).isEmpty {
+                    sectionRule
+                    charts(Self.sensorGroupOrder)
+                }
             }
             .padding(Theme.Layout.pagePadding)
         }
@@ -204,29 +213,44 @@ public struct DashboardView: View {
     /// needle cannot tell you a transfer has been running for a minute; and
     /// that "Disk Ops", "Network Packets" and "Memory Paging" are diagnostic
     /// detail that belongs in `monitorctl`, not on a dashboard you glance at.
-    private static let chartGroupOrder = [
+    private static let performanceGroupOrder = [
         "CPU", "CPU Cores", "Memory", "Disk", "Network", "GPU", "Disk Latency",
     ]
 
-    private var chartGroups: [(name: String, metrics: [MetricID])] {
+    /// What the machine is doing to itself: heat, fans, watts. Every one of
+    /// these is missing on some Mac — a fanless laptop has no fans, a desktop
+    /// has no battery — so the section draws only what this machine reports and
+    /// disappears entirely on a machine that reports none of it.
+    private static let sensorGroupOrder = ["Temperature", "Fans", "Power"]
+
+    private func groups(in order: [String]) -> [(name: String, metrics: [MetricID])] {
         let available = Dictionary(
             model.groups().map { ($0.name, $0.metrics) },
             uniquingKeysWith: { first, _ in first }
         )
-        return Self.chartGroupOrder.compactMap { name in
+        return order.compactMap { name in
             guard let metrics = available[name], !metrics.isEmpty else { return nil }
             return (name: name, metrics: metrics)
         }
     }
 
-    private var charts: some View {
+    /// The line between the two sections. Deliberately the same rule as the one
+    /// under the gauges, minus the drag: one kind of divider on the panel.
+    private var sectionRule: some View {
+        Rectangle()
+            .fill(Theme.panelEdge)
+            .frame(height: 1)
+            .padding(.vertical, 2)
+    }
+
+    private func charts(_ order: [String]) -> some View {
         LazyVGrid(
             columns: [GridItem(
                 .adaptive(minimum: Theme.Layout.chartMinimum), spacing: Theme.Layout.gridSpacing
             )],
             spacing: Theme.Layout.gridSpacing
         ) {
-            ForEach(chartGroups, id: \.name) { group in
+            ForEach(groups(in: order), id: \.name) { group in
                 ChartCard(
                     title: group.name,
                     series: group.metrics.compactMap { metric in

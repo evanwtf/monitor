@@ -13,6 +13,7 @@ public enum SourceRegistry {
             DiskSource(),
             NetworkSource(),
             GPUSource(),
+            SMCSource(),
         ]
     }
 
