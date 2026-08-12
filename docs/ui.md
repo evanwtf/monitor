@@ -146,6 +146,36 @@ since chart width is what the time axis needs. `chartMinHeight` is a *minimum*,
 so a shorter window scrolls rather than squashing the charts — the right way
 round: the charts stay readable and the window decides how many you see at once.
 
+## The gauge wall is resizable
+
+The rule between the dials and the charts is a drag handle. Pull it down and the
+dials grow to fill the space; pull it up and the charts take it back.
+
+It is a handle rather than a constant in `Theme.Layout` because the right answer
+changes with the session. Watching a restore run wants dials you can read across
+the room; reading a memory trend wants the charts. Everything inside `GaugeView`
+is a fraction of the dial's radius, so a dial dragged to three times the size
+scales whole — ticks, redline, needle width, the seven-segment readout. Only the
+caption under the dial is separate, and `Theme.Layout.gaugeCaptionSize` grows it
+with the dial rather than in exact proportion, which would be shouting at 300pt.
+
+Two details matter more than they look:
+
+- **The drag is measured in the global coordinate space.** The handle sits
+  *inside* what it resizes, so it slides down as the dials grow. A translation
+  measured against its own moving origin reports the pointer's travel minus the
+  handle's, which damps the drag to roughly half speed and feels like the panel
+  is resisting.
+- **The ceiling is the width, not a constant.** `Theme.Layout.gaugeMaximum` is a
+  sanity limit; the real one is the largest dial that keeps every gauge on one
+  row, which `DashboardView.gaugeCeiling` computes from the measured width. Past
+  it the grid wraps and the wall grows by a whole row at once, which under a drag
+  reads as the panel jumping rather than resizing. Narrowing the window
+  re-clamps for the same reason.
+
+The size is not persisted. v1 writes nothing to disk, and a dial size is not the
+thing to make an exception for.
+
 ## A legend that does not shuffle
 
 Each card's header carries the current value per series. Two things keep it

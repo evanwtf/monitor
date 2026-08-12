@@ -1,3 +1,4 @@
+import AppKit
 import MonitorCore
 import SwiftUI
 
@@ -12,6 +13,21 @@ public struct DashboardView: View {
     /// Seconds of history in the charts.
     @State private var window: TimeInterval = 120
 
+    /// Edge length of one dial, and so the height of the gauge wall.
+    ///
+    /// The dial is square and the wall is one row, so this single number is what
+    /// the drag handle moves: pull the rule down by 40 points and the dials get
+    /// 40 points taller, which is what makes the handle appear to follow the
+    /// pointer rather than to drive something.
+    @State private var gaugeSize = Theme.Layout.gaugeDefault
+    /// Size when the current drag began, so the gesture reads as an absolute
+    /// offset. Accumulating deltas instead would let a drag past the limit build
+    /// up credit that has to be dragged back off before the dial moves again.
+    @State private var dragOrigin: Double?
+    /// Width available to the wall, which is what really limits how big a dial
+    /// can get before the row wraps.
+    @State private var wallWidth = 0.0
+
     public init(model: AppModel = AppModel()) {
         _model = State(initialValue: model)
     }
@@ -20,7 +36,7 @@ public struct DashboardView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Layout.gridSpacing) {
                 gaugeWall
-                Divider().overlay(Theme.panelEdge)
+                resizeHandle
                 charts
             }
             .padding(Theme.Layout.pagePadding)
@@ -45,13 +61,30 @@ public struct DashboardView: View {
         ].filter { model.descriptor($0) != nil }
     }
 
+    /// The largest dial that still fits the whole row in the window.
+    ///
+    /// Past this the grid wraps and the wall grows by a whole row, which under a
+    /// drag reads as the panel jumping rather than resizing. So the drag stops
+    /// here instead.
+    private var gaugeCeiling: Double {
+        guard wallWidth > 0 else { return Theme.Layout.gaugeMaximum }
+        let count = Double(max(1, gaugeMetrics.count))
+        let fitted = (wallWidth - Theme.Layout.gridSpacing * (count - 1)) / count
+        return max(
+            Theme.Layout.gaugeMinimum, min(Theme.Layout.gaugeMaximum, fitted)
+        )
+    }
+
+    private func clamped(_ size: Double) -> Double {
+        min(max(Theme.Layout.gaugeMinimum, size), gaugeCeiling)
+    }
+
     private var gaugeWall: some View {
         LazyVGrid(
             columns: [GridItem(
-                .adaptive(
-                    minimum: Theme.Layout.gaugeMinimum,
-                    maximum: Theme.Layout.gaugeMaximum
-                ),
+                // Fixed rather than a range: the drag sets the size, and letting
+                // the grid pick within a range would fight it.
+                .adaptive(minimum: gaugeSize, maximum: gaugeSize),
                 spacing: Theme.Layout.gridSpacing
             )],
             spacing: Theme.Layout.gridSpacing
@@ -76,7 +109,7 @@ public struct DashboardView: View {
                         // 130pt across "Network Out" ran into the ticks.
                         Text(gaugeTitle(descriptor).uppercased())
                             .font(.system(
-                                size: Theme.Layout.gaugeCaption,
+                                size: Theme.Layout.gaugeCaptionSize(forGauge: gaugeSize),
                                 weight: .medium,
                                 design: .rounded
                             ))
@@ -85,6 +118,71 @@ public struct DashboardView: View {
                     }
                 }
             }
+        }
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: WallWidthKey.self, value: proxy.size.width)
+            }
+        )
+        .onPreferenceChange(WallWidthKey.self) { width in
+            wallWidth = width
+            // A window narrowed under the current dials has to shrink them, or
+            // the row wraps and the wall silently doubles in height.
+            gaugeSize = clamped(gaugeSize)
+        }
+    }
+
+    // MARK: - The handle between the two halves
+
+    /// The rule under the gauges, which drags to resize them.
+    ///
+    /// It is the boundary between "how fast right now" and "what has been
+    /// happening", and how much of the window each deserves depends on what you
+    /// are doing: watching a restore run wants big dials, and reading a memory
+    /// trend wants the charts. That is a judgement per session, not a constant,
+    /// which is why it is a handle and not a number in `Theme`.
+    private var resizeHandle: some View {
+        Rectangle()
+            .fill(Theme.panelEdge)
+            .frame(height: 1)
+            .frame(height: Theme.Layout.dividerGrab)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                // The pointer is the only thing that says a rule is draggable.
+                if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
+            }
+            .gesture(
+                // Global, not local. The handle is *inside* what it resizes, so
+                // it slides down as the dials grow — and a translation measured
+                // against a moving origin reports the pointer's travel minus the
+                // handle's own, which damps the drag to roughly half speed and
+                // feels like the panel is resisting.
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .onChanged { drag in
+                        let origin = dragOrigin ?? gaugeSize
+                        dragOrigin = origin
+                        gaugeSize = clamped(origin + drag.translation.height)
+                    }
+                    .onEnded { _ in dragOrigin = nil }
+            )
+            .accessibilityElement()
+            .accessibilityLabel("Gauge size")
+            .accessibilityValue(Format.value(gaugeSize, unit: .count))
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: gaugeSize = clamped(gaugeSize + 20)
+                case .decrement: gaugeSize = clamped(gaugeSize - 20)
+                @unknown default: break
+                }
+            }
+    }
+
+    /// Carries the wall's width up from the grid so the drag can be clamped to
+    /// what actually fits.
+    private struct WallWidthKey: PreferenceKey {
+        static let defaultValue = 0.0
+        static func reduce(value: inout Double, nextValue: () -> Double) {
+            value = max(value, nextValue())
         }
     }
 

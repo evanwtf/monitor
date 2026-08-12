@@ -29,8 +29,21 @@ public enum Theme {
     /// legends, colliding time labels and a third of the window empty.
     public enum Layout {
         /// Gauge dials are square, so this is their height too.
-        public static let gaugeMinimum = 100.0
-        public static let gaugeMaximum = 130.0
+        ///
+        /// The wall is resizable — the rule under it is a drag handle — so these
+        /// are the ends of that travel rather than a fixed size. The floor is
+        /// where the readout stops being legible; the ceiling is a sanity limit,
+        /// and on any window narrower than four ceiling-sized dials the real
+        /// limit is the width, computed by `DashboardView`.
+        public static let gaugeMinimum = 90.0
+        public static let gaugeMaximum = 360.0
+        /// Where the wall starts, and what it had been fixed at before it could
+        /// be dragged.
+        public static let gaugeDefault = 130.0
+        /// Height of the drag handle's hit area. The rule it draws is one point;
+        /// this is how close the pointer has to get, and 11 is the smallest that
+        /// does not feel like a game of darts.
+        public static let dividerGrab = 11.0
         /// Minimum chart card width. The grid fits as many columns as it can,
         /// so this is really a column count in disguise: 260 gives four columns
         /// at 1180pt and three at 900.
@@ -57,6 +70,16 @@ public enum Theme {
         /// at 130pt across there is no room on the face for "Network Out"
         /// without it running into the ticks.
         public static let gaugeCaption = 10.0
+
+        /// The caption grows with its dial, but not linearly and not past 18pt.
+        ///
+        /// Everything inside `GaugeView` is a fraction of the radius, so a dial
+        /// dragged to twice the size scales whole. A caption that stayed at 10pt
+        /// under a 300pt dial would be the one part that visibly did not, and
+        /// one that kept exact proportion would be shouting.
+        public static func gaugeCaptionSize(forGauge size: Double) -> Double {
+            min(18, max(gaugeCaption, size * 0.077))
+        }
     }
 
     public static let background = Color(red: 0.07, green: 0.07, blue: 0.08)
