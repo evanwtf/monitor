@@ -78,7 +78,10 @@ Scripts/           make-app.sh, which builds monitor.app, and make-icon.swift,
                    which draws its icon
 Tests/             MonitorCoreTests, MonitorSourcesTests, MonitorStoreTests
 docs/              README.md is the index
-.github/workflows/ci.yml   build, test, release build, CLI smoke test, lint
+.github/workflows/
+  ci.yml           build, test, release build, CLI smoke test, lint
+  release.yml      tags a version bump merged to main, publishes the release
+  package.yml      reusable: builds monitor.app, zips it, attaches it to a tag
 ```
 
 One SwiftPM package: one build and one test command cover all of it, so there
@@ -129,6 +132,12 @@ are no component-level AGENTS.md files.
   `docs/sensors.md` is the survey of what a Mac exposes and what it costs.
 - **The panel has two sections.** Performance above the rule, sensors below.
   The sensor section vanishes on a machine that reports none of it.
+- **Releasing is a version bump, nothing else.** Merge a pull request that
+  changes `MonitorVersion.string` and `release.yml` tags that commit, publishes
+  a release, and attaches `monitor-<version>.zip` built by `package.yml`. A
+  merge that leaves the version alone publishes nothing, which is what most
+  merges should do. A release published by hand from the GitHub UI gets its zip
+  the same way.
 - **The version lives in `MonitorCore/Version.swift`.** The About panel reads
   it at runtime and `make-app.sh` greps that file when it writes `Info.plist`,
   so a bundled build and `swift run monitor` cannot claim different versions.
@@ -218,6 +227,11 @@ are no component-level AGENTS.md files.
 - `.github/workflows/ci.yml` — the jobs run on a Mac on a desk, so both are
   guarded to skip pull requests from forks. Keep that condition on any job
   added.
+- `.github/workflows/release.yml` — `package.yml` is called as a reusable
+  workflow rather than listening for `release: published`, because a release
+  created with the default `GITHUB_TOKEN` does not fire that event. Splitting
+  them into two independent workflows would publish releases with no zip
+  attached.
 
 ## Troubleshooting
 

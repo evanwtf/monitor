@@ -1,0 +1,113 @@
+name: Release
+
+# Two ways a release begins, and both end in the Package workflow:
+#
+#   1. A pull request lands on main that bumps `MonitorVersion.string`. This
+#      workflow tags that commit and publishes the release.
+#   2. Somebody publishes a release by hand from the GitHub UI.
+#
+# So shipping is a line in a diff, reviewed like any other change. A merge that
+# does not touch the version publishes nothing — most merges should not ship a
+# release, and a docs typo is not a new version.
+#
+# A release created here by `gh` does *not* fire the `release: published`
+# event, because GitHub deliberately refuses to let the default token trigger
+# further workflows. That is why the packaging lives in a reusable workflow
+# this one calls directly rather than in a listener.
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  # Decides whether this merge is a release, and creates it if it is.
+  tag:
+    name: Tag a new version
+    if: github.event_name == 'push'
+    # git and gh only — no build — so this stays off the Mac runner, which the
+    # packaging job needs to itself.
+    runs-on: [self-hosted, Linux, X64]
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gh needs the tags to answer "does this one exist yet".
+          fetch-depth: 0
+
+      - name: Version
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="$(sed -n 's/.*static let string = "\(.*\)".*/\1/p' \
+              Sources/MonitorCore/Version.swift)"
+          [ -n "$version" ] || { echo "no version in Version.swift" >&2; exit 1; }
+          tag="v$version"
+
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "$tag exists — this merge is not a release." >> "$GITHUB_STEP_SUMMARY"
+            echo "Bump MonitorVersion.string to ship one." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Releasing $tag" >> "$GITHUB_STEP_SUMMARY"
+
+      # The app is signed ad-hoc, not with a Developer ID, and it is not
+      # notarized. macOS quarantines anything a browser downloads, so without
+      # these two sentences a first launch is a dialog saying the app is
+      # damaged. The honest explanation belongs on the download page, not in an
+      # issue somebody files a week later.
+      - name: Create release
+        if: steps.check.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.check.outputs.tag }}
+        run: |
+          command -v gh >/dev/null 2>&1 \
+              || { echo "gh is not installed on this runner" >&2; exit 1; }
+          cat > notes.md <<'NOTES'
+          Download the zip below, unzip it, and drag `monitor.app` to
+          Applications. macOS 14 or later, Apple silicon or Intel.
+
+          **First launch:** the app is not signed with a Developer ID and not
+          notarized, so macOS blocks it. Right-click the app and choose Open,
+          then Open again in the dialog. Or clear the quarantine flag yourself:
+
+          ```sh
+          xattr -d com.apple.quarantine /Applications/monitor.app
+          ```
+
+          Building it yourself avoids all of that — `Scripts/make-app.sh`.
+          NOTES
+
+          gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "monitor ${TAG#v}" \
+              --notes-file notes.md \
+              --generate-notes
+
+  # A merge that bumped the version, or a release published by hand. Either
+  # way the zip is built the same way and attached to the tag.
+  package:
+    name: Package
+    needs: tag
+    # `needs` on a skipped job skips this one too, so the release path spells
+    # out both events. `always()` lets the release event through while a
+    # failed tag job still stops the line.
+    if: |
+      always() && needs.tag.result != 'failure'
+        && (github.event_name == 'release' || needs.tag.outputs.tag != '')
+    uses: ./.github/workflows/package.yml
+    with:
+      tag: ${{ github.event_name == 'release' && github.event.release.tag_name || needs.tag.outputs.tag }}
