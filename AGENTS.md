@@ -62,14 +62,15 @@ look at it in the app.
 ```
 Sources/
   MonitorCore/     metric model, ring buffer, downsampling, gauge auto-ranging,
-                   seven-segment digit mapping, formatting, the sampling clock.
-                   No macOS APIs — so all of it is testable without a machine
-                   to read.
+                   seven-segment digit mapping, formatting, the sampling clock,
+                   the layout preferences model. No macOS APIs — so all of it is
+                   testable without a machine to read.
   MonitorSources/  the readers: CPU, memory, disk, network, GPU, SMC sensors
                    (temperature, fans, power), and the registry that lists them.
                    One file per source, plus SMC.swift for the SMC transport.
   MonitorUI/       Theme (palette + Layout density), GaugeView, SevenSegmentText,
-                   ChartCard, FlowLayout, DashboardView, AppModel
+                   ChartCard, FlowLayout, DashboardView, PreferencesView,
+                   AppModel, LayoutPreferencesStore
   MonitorStore/    SQLite history and retention. Designed and tested but NOT
                    linked into the app — see "Guardrails" below.
   monitor/         the app target (@main SwiftUI App) and its AppDelegate
@@ -118,8 +119,17 @@ are no component-level AGENTS.md files.
   perflevel order — slowest cluster first.
 - **Gauges are for rates, charts are for levels.** A dial answers "how hard is
   this working right now against what it can do" (disk, network throughput). A
-  chart answers "what has been happening" (CPU, memory). `AppModel.isGauge`
-  encodes the split, by unit: the per-second units get a dial.
+  chart answers "what has been happening" (CPU, memory). `LayoutDefaults`
+  encodes the split — but as an opening position, not a rule.
+- **The layout is chosen per metric, in preferences.** Cmd-, opens a tabbed
+  window whose one tab, Layout, lists every metric with a Gauge checkbox and a
+  Chart checkbox. The two are not symmetrical: **a gauge is per metric, a chart
+  is per group.** Ticking Network In and Network Out gives two dials and *one*
+  Network card with two lines, because in and out are only readable against each
+  other. `LayoutPreferences` (in `MonitorCore`, so the merge rules are testable)
+  tracks which metrics it has an opinion about as well as which are on —
+  otherwise a metric added by a later version is indistinguishable from one
+  somebody switched off, and stays silently missing.
 - **One clock.** `Sampler.tick(at:)` reads every source at one timestamp so a
   batch lines up on the x-axis. A source that throws is logged and skipped for
   that tick only. `AppModel` samples at 0.5 s into a 1200-point ring buffer —
@@ -201,7 +211,9 @@ are no component-level AGENTS.md files.
   the filesystem. This is about SSD endurance: a monitor runs all day, every
   day. Adding that dependency is a deliberate product decision with an
   arithmetic argument behind it (`docs/storage.md`), never a convenience during
-  a refactor.
+  a refactor. Preferences are the exception that proves the rule: layout
+  choices go to `UserDefaults` under `wtf.evan.monitor`, which is a write when
+  somebody ticks a checkbox, not a write every half second forever.
 - Never report a fabricated value when a source fails. Throw
   `MetricSourceError` and let the UI say "not available". A plausible wrong
   number in a monitoring tool is worse than a gap, because nobody checks it.

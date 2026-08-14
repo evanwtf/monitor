@@ -92,11 +92,21 @@ the two is a number about nothing.
 
 A few decisions that are load-bearing rather than incidental:
 
-- **Nothing is written to disk.** A monitor runs all day, every day. Writing a
-  sample a second forever costs real SSD endurance for data nobody reads, so v1
-  simply does not. This is enforced by the dependency graph — the app does not
-  link the storage library at all — not by anyone remembering. `docs/storage.md`
-  works through the arithmetic for when persistence does arrive.
+- **No history is written to disk.** A monitor runs all day, every day. Writing
+  a sample a second forever costs real SSD endurance for data nobody reads, so
+  v1 simply does not. This is enforced by the dependency graph — the app does
+  not link the storage library at all — not by anyone remembering. Preferences
+  are the one thing that persists, which is a write per checkbox rather than a
+  write per sample. `docs/storage.md` works through the arithmetic for when
+  history does arrive.
+- **A gauge is per metric; a chart is per group.** Cmd-, opens Preferences, and
+  its Layout tab lists every metric with a Gauge checkbox and a Chart checkbox.
+  Ticking the chart column for Network In and Network Out gives one Network card
+  with both lines on it, because in and out are only readable against each
+  other; ticking the gauge column gives two dials, because a dial shows one
+  number. The panel opens with a considered layout — dials for disk and network
+  throughput, charts for everything worth glancing at — and this is where you
+  disagree with it.
 - **A failed reading is shown as a gap, never as zero.** An idle machine and a
   broken sensor must not look identical. Sources throw; the UI greys the card
   out and says so.
