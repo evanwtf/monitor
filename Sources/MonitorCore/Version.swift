@@ -5,5 +5,5 @@
 /// unbundled one cannot claim different versions. Keep the literal on one
 /// line: the script's pattern expects it there.
 public enum MonitorVersion {
-    public static let string = "1.0"
+    public static let string = "1.0.0"
 }
