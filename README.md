@@ -36,7 +36,8 @@ To install it somewhere you can launch it from, build a real bundle:
 Scripts/make-app.sh ~/Applications
 ```
 
-That produces `monitor.app` — Info.plist, bundle id and an ad-hoc signature.
+That produces `monitor.app` — Info.plist, icon, bundle id and an ad-hoc
+signature.
 It is not signed with a Developer ID or notarized, so it is for this Mac.
 
 There is also a headless CLI, which is how the sampling code gets developed and

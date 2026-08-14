@@ -50,6 +50,7 @@ swift run monitorctl watch --source disk --interval 0.5
 swift run monitorctl watch --json --count 5        # machine-readable, bounded
 swiftformat Sources Tests --lint --cache ignore    # CI lint gate
 Scripts/make-app.sh [dest]       # wrap the release binary in monitor.app
+Scripts/make-icon.swift out.icns # draw the app icon (make-app.sh calls this)
 ```
 
 `monitorctl` exists because sampling is the part most likely to be wrong and the
@@ -73,7 +74,8 @@ Sources/
                    linked into the app — see "Guardrails" below.
   monitor/         the app target (@main SwiftUI App) and its AppDelegate
   monitorctl/      headless CLI harness
-Scripts/           make-app.sh, which builds monitor.app
+Scripts/           make-app.sh, which builds monitor.app, and make-icon.swift,
+                   which draws its icon
 Tests/             MonitorCoreTests, MonitorSourcesTests, MonitorStoreTests
 docs/              README.md is the index
 .github/workflows/ci.yml   build, test, release build, CLI smoke test, lint
@@ -127,6 +129,13 @@ are no component-level AGENTS.md files.
   `docs/sensors.md` is the survey of what a Mac exposes and what it costs.
 - **The panel has two sections.** Performance above the rule, sensors below.
   The sensor section vanishes on a machine that reports none of it.
+- **The version lives in `MonitorCore/Version.swift`.** The About panel reads
+  it at runtime and `make-app.sh` greps that file when it writes `Info.plist`,
+  so a bundled build and `swift run monitor` cannot claim different versions.
+- **The icon is drawn, not stored.** `Scripts/make-icon.swift` renders it from
+  the same palette as `Theme.swift` and pipes the set through `iconutil`, so
+  `.build/AppIcon.icns` is a build product and no binary blob is in the
+  repository.
 - **A missing sample means unavailable.** `AppModel` marks any descriptor that
   produced no sample this tick, minus the first-tick warm-up for rate metrics.
   That is how a card gets greyed out instead of drawing a flat zero line.

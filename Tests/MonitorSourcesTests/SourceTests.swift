@@ -293,4 +293,17 @@ struct SourceTests {
         let batch = await sampler.tick(at: 1)
         #expect(!batch.samples.isEmpty, "a broken source suppressed a working one")
     }
+
+    @Test("the machine describes itself for the About panel")
+    func machineInfo() {
+        let machine = MachineInfo.current
+        #expect(!machine.model.isEmpty)
+        #expect(!machine.chip.isEmpty)
+        #expect(machine.cores > 0)
+        #expect(machine.memoryBytes > 0)
+        // "Apple M4, 10 cores, 16 GB" — three facts, no empty fields between
+        // the commas even when a sysctl key is missing.
+        #expect(machine.hardwareSummary.contains(machine.chip))
+        #expect(!machine.hardwareSummary.contains(", ,"))
+    }
 }
