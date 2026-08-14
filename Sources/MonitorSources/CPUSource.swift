@@ -96,15 +96,15 @@ public final class CPUSource: MetricSource, @unchecked Sendable {
     /// core count, because a wrong split is worse than no split: it would label
     /// real load as coming from the wrong kind of core.
     static func readClusters() -> [Cluster] {
-        let levels = sysctlInt("hw.nperflevels") ?? 1
+        let levels = Sysctl.int("hw.nperflevels") ?? 1
         guard levels > 1 else { return [] }
 
         var descending: [(level: Int, name: String, count: Int)] = []
         for level in 0..<levels {
-            guard let count = sysctlInt("hw.perflevel\(level).logicalcpu"), count > 0 else {
+            guard let count = Sysctl.int("hw.perflevel\(level).logicalcpu"), count > 0 else {
                 return []
             }
-            let name = sysctlString("hw.perflevel\(level).name") ?? "Level \(level)"
+            let name = Sysctl.string("hw.perflevel\(level).name") ?? "Level \(level)"
             descending.append((level, name, count))
         }
 
@@ -126,22 +126,6 @@ public final class CPUSource: MetricSource, @unchecked Sendable {
         // Fastest cluster first, so it takes the first series colour and reads
         // at the top of the legend.
         return result.sorted { $0.level < $1.level }
-    }
-
-    static func sysctlInt(_ name: String) -> Int? {
-        var value = 0
-        var size = MemoryLayout<Int>.size
-        guard sysctlbyname(name, &value, &size, nil, 0) == 0 else { return nil }
-        return value
-    }
-
-    static func sysctlString(_ name: String) -> String? {
-        var size = 0
-        guard sysctlbyname(name, nil, &size, nil, 0) == 0, size > 0 else { return nil }
-        var buffer = [UInt8](repeating: 0, count: size)
-        guard sysctlbyname(name, &buffer, &size, nil, 0) == 0 else { return nil }
-        // sysctl includes the null terminator in the byte count it reports.
-        return String(decoding: buffer.prefix(while: { $0 != 0 }), as: UTF8.self)
     }
 
     public func read(at timestamp: TimeInterval) throws -> SampleBatch {

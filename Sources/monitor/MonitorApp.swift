@@ -21,6 +21,7 @@ struct MonitorApp: App {
         // Dark only for now. The instrument panel is designed against a dark
         // ground and a light mode is a separate palette, not a toggle.
         .defaultSize(width: 1000, height: 760)
+        .commands { AboutCommand() }
     }
 }
 

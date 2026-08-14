@@ -1,0 +1,86 @@
+name: Package
+
+# Builds monitor.app, zips it, and — when it is given a release tag — attaches
+# the zip to that release.
+#
+# It is a reusable workflow rather than a step in the release workflow because
+# a release can begin two ways: a merge to main that bumps the version, or a
+# release published by hand from the GitHub UI. Both end here, so the artifact
+# is built exactly one way.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to attach the zip to. Omit to only build it.
+        required: false
+        type: string
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Build and zip monitor.app
+    # A self-hosted runner — a Mac on a desk. Only a merge to main, a published
+    # release or a manual run reaches this workflow, and all three need write
+    # access to the repository, so there is no fork path to guard against.
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A release built from a tag must be built from that tag's code. The
+          # default checkout of a `release` event is the tag already, but being
+          # explicit means a hand-made release on an old commit still ships
+          # that commit rather than the tip of main.
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Swift version
+        run: swift --version
+
+      # A published zip must not contain code that fails its own gates, and a
+      # tag can point anywhere — including at a commit that never ran CI.
+      - name: Test
+        run: swift test
+
+      - name: Build monitor.app
+        run: Scripts/make-app.sh
+
+      # ditto, not zip: a bundle holds symlinks and extended attributes, and
+      # zip flattens them. This is the command Apple's own notarization
+      # instructions use.
+      - name: Package
+        id: package
+        run: |
+          version="$(sed -n 's/.*static let string = "\(.*\)".*/\1/p' \
+              Sources/MonitorCore/Version.swift)"
+          name="monitor-${version}.zip"
+          ditto -c -k --keepParent .build/monitor.app "$name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "sha=$(shasum -a 256 "$name" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          ls -lh "$name"
+
+      # Uploaded on every run, released or not, so a manual run is a way to get
+      # a build without publishing anything.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: monitor-app
+          path: ${{ steps.package.outputs.name }}
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          ZIP: ${{ steps.package.outputs.name }}
+          SHA: ${{ steps.package.outputs.sha }}
+        run: |
+          if ! command -v gh >/dev/null 2>&1; then brew install gh; fi
+          # The checksum rides along as a file rather than a line in the notes:
+          # re-running a failed publish then replaces it instead of appending a
+          # second copy.
+          echo "$SHA  $ZIP" > "$ZIP.sha256"
+          # --clobber so a re-run replaces the assets rather than failing on a
+          # name that already exists.
+          gh release upload "$TAG" "$ZIP" "$ZIP.sha256" --clobber

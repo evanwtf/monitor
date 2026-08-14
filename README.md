@@ -1,5 +1,12 @@
 # monitor
 
+[![CI](https://github.com/evanwtf/monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/evanwtf/monitor/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/evanwtf/monitor?label=release)](https://github.com/evanwtf/monitor/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/evanwtf/monitor/total?label=downloads)](https://github.com/evanwtf/monitor/releases)
+[![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey)](https://github.com/evanwtf/monitor/releases/latest)
+[![Swift](https://img.shields.io/badge/swift-6.0-orange)](https://swift.org)
+[![License](https://img.shields.io/github/license/evanwtf/monitor)](LICENSE)
+
 A standalone macOS system monitor. CPU, GPU, memory, disk and network, in a
 window, with charts big enough to actually read.
 
@@ -20,6 +27,23 @@ Rates get analog gauges. Levels get charts. History is a ten-minute ring buffer
 that dies with the process — persistence and a background sampler are the next
 step, not this one. See `docs/roadmap.md`.
 
+## Download
+
+Grab the latest `monitor-*.zip` from
+[Releases](https://github.com/evanwtf/monitor/releases/latest), unzip it, and
+drag `monitor.app` to Applications.
+
+The app is signed ad-hoc rather than with a Developer ID, and it is not
+notarized, so macOS quarantines it on first launch and says it is damaged.
+Right-click the app and choose Open, then Open again in the dialog. Or clear
+the flag yourself:
+
+```sh
+xattr -d com.apple.quarantine /Applications/monitor.app
+```
+
+Building it yourself avoids all of that.
+
 ## Running it
 
 ```sh
@@ -36,8 +60,9 @@ To install it somewhere you can launch it from, build a real bundle:
 Scripts/make-app.sh ~/Applications
 ```
 
-That produces `monitor.app` — Info.plist, bundle id and an ad-hoc signature.
-It is not signed with a Developer ID or notarized, so it is for this Mac.
+That produces `monitor.app` — Info.plist, icon, bundle id and an ad-hoc
+signature. It is not signed with a Developer ID or notarized, so it is for this
+Mac.
 
 There is also a headless CLI, which is how the sampling code gets developed and
 verified without a GUI in the way:

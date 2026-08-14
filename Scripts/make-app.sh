@@ -19,13 +19,27 @@
 set -euo pipefail
 
 readonly BUNDLE_ID="wtf.evan.monitor"
-readonly VERSION="1.0"
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
+# One version, and it lives in the source so the About panel and the bundle
+# cannot disagree.
+VERSION="$(sed -n 's/.*static let string = "\(.*\)".*/\1/p' \
+    Sources/MonitorCore/Version.swift)"
+[ -n "$VERSION" ] || { echo "no version in Sources/MonitorCore/Version.swift" >&2; exit 1; }
+readonly VERSION
+
 destination="${1:-}"
 app=".build/monitor.app"
+
+# The icon is drawn by a script rather than checked in, so the palette has one
+# home. Rebuilt only when the drawing changes — it costs a few seconds.
+icon=".build/AppIcon.icns"
+if [ ! -f "$icon" ] || [ Scripts/make-icon.swift -nt "$icon" ]; then
+    echo "Drawing icon…"
+    swift Scripts/make-icon.swift "$icon"
+fi
 
 echo "Building release…"
 swift build -c release --product monitor
@@ -37,6 +51,7 @@ echo "Assembling ${app}…"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary" "$app/Contents/MacOS/monitor"
+cp "$icon" "$app/Contents/Resources/AppIcon.icns"
 
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -51,6 +66,10 @@ cat > "$app/Contents/Info.plist" <<PLIST
     <string>monitor</string>
     <key>CFBundleIdentifier</key>
     <string>$BUNDLE_ID</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -59,6 +78,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
     <string>$VERSION</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>MIT licensed. Copyright © 2026 Evan Hoffman.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <!-- The window is designed against a dark ground; see Theme. -->
