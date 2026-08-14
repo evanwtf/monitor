@@ -64,25 +64,80 @@ struct LayoutTab: View {
         .padding(.vertical, 12)
     }
 
+    /// Sections the reader has folded away. Empty to start: a list that opens
+    /// half closed hides the thing somebody came here to find.
+    ///
+    /// View state rather than a stored preference. Collapsing is how you get a
+    /// long list out of the way while you work on one group, which is a
+    /// decision for the next thirty seconds, not for the next month.
+    @State private var collapsed: Set<String> = []
+
     private var list: some View {
         ScrollView {
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 7) {
                 header
                 ForEach(sections, id: \.name) { section in
-                    GridRow {
-                        Text(section.name)
-                            .font(.headline)
-                            .gridCellColumns(3)
-                    }
-                    .padding(.top, 6)
-                    ForEach(section.metrics, id: \.self) { metric in
-                        if let descriptor = model.descriptor(metric) {
-                            row(descriptor)
+                    sectionHeader(section)
+                    if !collapsed.contains(section.name) {
+                        ForEach(section.metrics, id: \.self) { metric in
+                            if let descriptor = model.descriptor(metric) {
+                                row(descriptor)
+                            }
                         }
                     }
                 }
             }
             .padding(16)
+        }
+    }
+
+    /// A group's heading: a disclosure triangle, the group name, and the two
+    /// checkboxes that set every metric under it.
+    ///
+    /// The section checkbox is the same control as the row checkboxes, one
+    /// level up — tick it and the whole column turns on, untick it and the
+    /// whole column turns off. It draws itself as mixed when the rows disagree,
+    /// which is what makes a collapsed section still readable: a dash rather
+    /// than a tick says "some of these", so folding a group away does not hide
+    /// what state it is in.
+    private func sectionHeader(
+        _ section: (name: String, metrics: [MetricID])
+    ) -> some View {
+        GridRow {
+            Button {
+                toggleCollapsed(section.name)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        // Rotated rather than swapped for a second symbol, so
+                        // the triangle turns instead of blinking.
+                        .rotationEffect(.degrees(collapsed.contains(section.name) ? -90 : 0))
+                    Text(section.name).font(.headline)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(section.name) metrics")
+            .accessibilityValue(collapsed.contains(section.name) ? "collapsed" : "expanded")
+
+            SectionToggle(model: model, section: section.name,
+                          metrics: section.metrics, column: .gauge)
+                .gridColumnAlignment(.center)
+            SectionToggle(model: model, section: section.name,
+                          metrics: section.metrics, column: .chart)
+                .gridColumnAlignment(.center)
+        }
+        .padding(.top, 6)
+    }
+
+    private func toggleCollapsed(_ section: String) {
+        if collapsed.contains(section) {
+            collapsed.remove(section)
+        } else {
+            collapsed.insert(section)
         }
     }
 
@@ -119,41 +174,48 @@ struct LayoutTab: View {
 }
 
 /// One checkbox in the grid.
-///
-/// Its own view rather than a helper returning `some View` because the binding
-/// has to read and write the model, and a view that owns the model is the
-/// straightforward way to say that.
 private struct LayoutToggle: View {
-    enum Column: String {
-        case gauge, chart
-    }
-
     @Bindable var model: AppModel
     let descriptor: MetricDescriptor
-    let column: Column
+    let column: AppModel.LayoutColumn
 
     var body: some View {
         // The label is hidden but not absent: without it a screen reader reads
         // a column of unnamed checkboxes, and the column heading is rows away.
         Toggle(
-            "\(descriptor.group) \(descriptor.name) \(column.rawValue)", isOn: binding
+            "\(descriptor.group) \(descriptor.name) \(column.rawValue)",
+            isOn: model.binding(column, for: descriptor.id)
         )
         .labelsHidden()
     }
+}
 
-    private var binding: Binding<Bool> {
-        switch column {
-        case .gauge:
-            Binding(
-                get: { model.layout.showsGauge(descriptor.id) },
-                set: { model.layout.setGauge($0, for: descriptor.id) }
-            )
-        case .chart:
-            Binding(
-                get: { model.layout.showsChart(descriptor.id) },
-                set: { model.layout.setChart($0, for: descriptor.id) }
-            )
-        }
+/// The checkbox in a section heading, which sets every metric under it.
+///
+/// `Toggle(_:sources:isOn:)` rather than a `Bool` of our own: given the row
+/// bindings it derives the three states itself — on when all agree, off when
+/// none, mixed when they disagree — and writes to all of them when clicked.
+/// A hand-rolled version would have to keep a separate flag in step with the
+/// rows, which is the bug this API exists to remove.
+private struct SectionToggle: View {
+    /// One row's binding, wrapped because `sources:` takes a collection of
+    /// elements and a key path to the binding inside each.
+    private struct Entry {
+        let binding: Binding<Bool>
+    }
+
+    @Bindable var model: AppModel
+    let section: String
+    let metrics: [MetricID]
+    let column: AppModel.LayoutColumn
+
+    var body: some View {
+        Toggle(
+            "All \(section) \(column.rawValue)s",
+            sources: metrics.map { Entry(binding: model.binding(column, for: $0)) },
+            isOn: \.binding
+        )
+        .labelsHidden()
     }
 }
 

@@ -199,6 +199,31 @@ public final class AppModel {
         }
     }
 
+    /// The two things preferences can turn on for a metric.
+    public enum LayoutColumn: String, CaseIterable, Sendable {
+        case gauge, chart
+    }
+
+    /// A checkbox's worth of the layout, as a binding.
+    ///
+    /// Vended by the model rather than built in the view because a metric's row
+    /// and its section heading both write the same state, and a single
+    /// definition is what keeps them from drifting.
+    public func binding(_ column: LayoutColumn, for metric: MetricID) -> Binding<Bool> {
+        switch column {
+        case .gauge:
+            Binding(
+                get: { self.layout.showsGauge(metric) },
+                set: { self.layout.setGauge($0, for: metric) }
+            )
+        case .chart:
+            Binding(
+                get: { self.layout.showsChart(metric) },
+                set: { self.layout.setChart($0, for: metric) }
+            )
+        }
+    }
+
     /// Puts every metric back to the layout the app ships with.
     public func restoreDefaultLayout() {
         layout = LayoutPreferences.defaults(for: Array(descriptors.values))

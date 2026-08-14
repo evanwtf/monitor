@@ -123,8 +123,9 @@ are no component-level AGENTS.md files.
   encodes the split — but as an opening position, not a rule.
 - **The layout is chosen per metric, in preferences.** Cmd-, opens a tabbed
   window whose one tab, Layout, lists every metric with a Gauge checkbox and a
-  Chart checkbox. The two are not symmetrical: **a gauge is per metric, a chart
-  is per group.** Ticking Network In and Network Out gives two dials and *one*
+  Chart checkbox, grouped into collapsible sections whose headings carry the
+  same two checkboxes for the whole group. The two columns are not symmetrical:
+  **a gauge is per metric, a chart is per group.** Ticking Network In and Network Out gives two dials and *one*
   Network card with two lines, because in and out are only readable against each
   other. `LayoutPreferences` (in `MonitorCore`, so the merge rules are testable)
   tracks which metrics it has an opinion about as well as which are on —

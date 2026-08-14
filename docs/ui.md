@@ -28,6 +28,18 @@ worth explaining:
   lines, because in and out are only readable against each other. A group whose
   metrics are all unticked has no card at all rather than an empty one.
 
+Each group is a collapsible section, and its heading carries the same two
+checkboxes one level up: they set every metric under it. They are built with
+`Toggle(_:sources:isOn:)`, given the row bindings, so the three states come from
+the rows rather than from a flag kept in step with them — on when all agree, off
+when none, **mixed** when they disagree. The mixed dash is what keeps a folded
+section readable: "some of these" is visible without unfolding it.
+
+Collapsing is view state, not a stored preference. It is how you get a long list
+out of the way while working on one group — a decision for the next thirty
+seconds, not the next month — and a preferences window that opens half closed
+hides the thing somebody came to find.
+
 `LayoutPreferences` holds the two sets and lives in `MonitorCore`, so the merge
 rules are testable without a window. It records which metrics it has an opinion
 about as well as which are on: without that, a metric added by a later version

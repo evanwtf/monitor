@@ -104,7 +104,9 @@ A few decisions that are load-bearing rather than incidental:
   Ticking the chart column for Network In and Network Out gives one Network card
   with both lines on it, because in and out are only readable against each
   other; ticking the gauge column gives two dials, because a dial shows one
-  number. The panel opens with a considered layout — dials for disk and network
+  number. Sections collapse, and a section heading's checkbox sets the whole
+  group at once — it shows a dash when the rows disagree, so a folded section
+  still tells you what state it is in. The panel opens with a considered layout — dials for disk and network
   throughput, charts for everything worth glancing at — and this is where you
   disagree with it.
 - **A failed reading is shown as a gap, never as zero.** An idle machine and a
