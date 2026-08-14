@@ -1,0 +1,50 @@
+import Foundation
+import MonitorCore
+
+/// Where the layout choices are kept between launches.
+///
+/// `UserDefaults`, which is the one place a Mac app is expected to write. Note
+/// what this is not: the app still writes no *history* to disk, and still does
+/// not link `MonitorStore`. The argument against storing samples is about SSD
+/// endurance — a monitor runs all day, and a sample every half second forever
+/// costs real writes. A checkbox written when somebody ticks it costs nothing,
+/// and the alternative is a preferences pane that forgets.
+enum LayoutPreferencesStore {
+    static let key = "layout.preferences"
+
+    /// Named explicitly rather than taken from `.standard`.
+    ///
+    /// `.standard` keys off the bundle identifier, and `swift run monitor` has
+    /// no bundle: the development build would write to a domain called
+    /// `monitor` and `monitor.app` to `wtf.evan.monitor`, so a layout chosen in
+    /// one would be invisible in the other. Same reasoning as the version
+    /// string — the two builds are the same program and must not disagree.
+    /// Computed rather than stored because a `static let` holding a
+    /// non-`Sendable` class is a concurrency error under Swift 6, and
+    /// `UserDefaults` is cheap to ask for and shared behind the scenes anyway.
+    static var suite: UserDefaults { UserDefaults(suiteName: domain) ?? .standard }
+
+    static let domain = "wtf.evan.monitor"
+
+    /// Reads the stored layout and gives any metric it has not seen its
+    /// default. A first launch, a corrupt value and a missing key all end up
+    /// in the same place: the defaults for whatever this machine reports.
+    static func load(
+        for descriptors: [MetricDescriptor], from defaults: UserDefaults = suite
+    ) -> LayoutPreferences {
+        guard let data = defaults.data(forKey: key),
+              let stored = try? JSONDecoder().decode(LayoutPreferences.self, from: data)
+        else {
+            return LayoutPreferences.defaults(for: descriptors)
+        }
+        return stored.adoptingDefaults(for: descriptors)
+    }
+
+    static func save(_ preferences: LayoutPreferences, to defaults: UserDefaults = suite) {
+        guard let data = try? JSONEncoder().encode(preferences) else {
+            log.error("Could not encode layout preferences")
+            return
+        }
+        defaults.set(data, forKey: key)
+    }
+}

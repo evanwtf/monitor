@@ -2,14 +2,65 @@
 
 ## Gauges for rates, charts for levels
 
-`AppModel.isGauge` splits them by unit: `bytesPerSecond`, `bitsPerSecond` and
-`operationsPerSecond` get a dial, everything else gets a chart.
+`LayoutDefaults` splits them: disk and network throughput open with a dial,
+everything the panel draws opens with a chart.
 
 The split is not decorative. A dial answers *"how hard is this working right
 now, against what it can do"* — the right question for disk and network
 throughput. A chart answers *"what has been happening"* — the right question for
 CPU and memory, where a needle would just wobble and tell you nothing about the
 last two minutes.
+
+It is a default rather than a rule. Every metric can have either, both or
+neither, chosen per metric in preferences — see below.
+
+## Choosing the layout
+
+Preferences (Cmd-,) is a tabbed window with one tab, Layout: every metric this
+machine reports, one row each, with a Gauge checkbox and a Chart checkbox.
+
+The two columns are not symmetrical, and that is the one thing about the screen
+worth explaining:
+
+- **A gauge is per metric.** Tick Network In and Network Out and you get two
+  dials, because a dial shows one number.
+- **A chart is per group.** Tick both and you get *one* Network card with two
+  lines, because in and out are only readable against each other. A group whose
+  metrics are all unticked has no card at all rather than an empty one.
+
+Each group is a collapsible section, and its heading carries the same two
+checkboxes one level up: they set every metric under it. They are built with
+`Toggle(_:sources:isOn:)`, given the row bindings, so the three states come from
+the rows rather than from a flag kept in step with them — on when all agree, off
+when none, **mixed** when they disagree. The mixed dash is what keeps a folded
+section readable: "some of these" is visible without unfolding it.
+
+Collapsing is view state, not a stored preference. It is how you get a long list
+out of the way while working on one group — a decision for the next thirty
+seconds, not the next month — and a preferences window that opens half closed
+hides the thing somebody came to find.
+
+`LayoutPreferences` holds the two sets and lives in `MonitorCore`, so the merge
+rules are testable without a window. It records which metrics it has an opinion
+about as well as which are on: without that, a metric added by a later version
+looks exactly like one somebody switched off, and would be silently missing.
+`adoptingDefaults(for:)` gives an unseen metric its default and leaves every
+choice already made alone.
+
+Order is fixed, not derived. `LayoutDefaults.gaugeOrder` places the four dials
+the app opens with, and anything else ticked goes after them by metric id;
+`performanceGroupOrder` and `sensorGroupOrder` place the cards, with groups on
+neither list — `Disk Ops`, `Network Packets`, `Memory Paging` — landing after
+the named performance cards. A dial or a card that moves between launches is one
+you have to hunt for.
+
+The choices are written to `UserDefaults` under `wtf.evan.monitor`, named
+explicitly rather than taken from `.standard`: `swift run monitor` has no
+bundle, so `.standard` would give the development build its own domain and a
+layout chosen in one build would be invisible in the other. Note what this is
+not — the app still writes no *history* to disk and still does not link
+`MonitorStore`. The argument in `storage.md` is about a sample every half second
+forever, not about a checkbox written when somebody ticks it.
 
 ## The auto-ranging dial
 
@@ -235,13 +286,14 @@ their labels never change at all.
 
 ## Which cards appear, and what they are bounded by
 
-`DashboardView.chartGroupOrder` names the chart cards explicitly, in order, for
-the same reason the gauge list is explicit: cards that move between launches are
-cards you have to hunt for. It also carries two decisions that deriving the list
-could not express — that disk and network throughput deserve a chart *as well as*
-a dial, because a needle cannot tell you a transfer has been running for a
-minute; and that `Disk Ops`, `Network Packets` and `Memory Paging` are diagnostic
-detail belonging in `monitorctl` rather than on a dashboard you glance at.
+`LayoutDefaults` names the chart cards explicitly, in order, for the same reason
+the gauge list is explicit: cards that move between launches are cards you have
+to hunt for. It also carries two decisions that deriving the list could not
+express — that disk and network throughput deserve a chart *as well as* a dial,
+because a needle cannot tell you a transfer has been running for a minute; and
+that `Disk Ops`, `Network Packets` and `Memory Paging` are diagnostic detail
+belonging in `monitorctl` rather than on a dashboard you glance at. Both are
+opening positions rather than verdicts: the Layout tab is where you disagree.
 
 Two things bound a chart to its card:
 

@@ -35,17 +35,22 @@ public struct DashboardView: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Layout.gridSpacing) {
-                gaugeWall
-                resizeHandle
-                charts(Self.performanceGroupOrder)
+                // Both halves are optional now that the layout is chosen in
+                // preferences. A wall with no dials on it would otherwise leave
+                // a drag handle with nothing to drag.
+                if !gaugeMetrics.isEmpty {
+                    gaugeWall
+                    resizeHandle
+                }
+                charts(model.performanceGroups)
                 // Sensors are a different question from performance. What the
                 // machine is doing and how hot it is getting are read at
                 // different moments and for different reasons, and mixing them
                 // into one grid means hunting for the temperature card among
                 // the throughput ones.
-                if !groups(in: Self.sensorGroupOrder).isEmpty {
+                if !model.sensorGroups.isEmpty {
                     sectionRule
-                    charts(Self.sensorGroupOrder)
+                    charts(model.sensorGroups)
                 }
             }
             .padding(Theme.Layout.pagePadding)
@@ -58,17 +63,9 @@ public struct DashboardView: View {
 
     // MARK: - Gauges
 
-    private var gaugeMetrics: [MetricID] {
-        // Fixed order rather than whatever the registry yields, so the dials do
-        // not move around between launches. A gauge you have to hunt for is a
-        // gauge you stop glancing at.
-        [
-            MetricID("disk.bytes.read"),
-            MetricID("disk.bytes.written"),
-            MetricID("net.bits.in"),
-            MetricID("net.bits.out"),
-        ].filter { model.descriptor($0) != nil }
-    }
+    /// Whichever dials preferences say to draw, in a fixed order — see
+    /// `AppModel.gaugeMetrics`.
+    private var gaugeMetrics: [MetricID] { model.gaugeMetrics }
 
     /// The largest dial that still fits the whole row in the window.
     ///
@@ -204,36 +201,6 @@ public struct DashboardView: View {
 
     // MARK: - Charts
 
-    /// Which groups get a chart card, in the order they appear.
-    ///
-    /// Named explicitly rather than derived, for the same reason as the gauge
-    /// list: cards that move between launches are cards you have to hunt for.
-    /// Deriving it also cannot express the two decisions encoded here — that
-    /// disk and network throughput deserve a chart *as well as* a dial, since a
-    /// needle cannot tell you a transfer has been running for a minute; and
-    /// that "Disk Ops", "Network Packets" and "Memory Paging" are diagnostic
-    /// detail that belongs in `monitorctl`, not on a dashboard you glance at.
-    private static let performanceGroupOrder = [
-        "CPU", "CPU Cores", "Memory", "Disk", "Network", "GPU", "Disk Latency",
-    ]
-
-    /// What the machine is doing to itself: heat, fans, watts. Every one of
-    /// these is missing on some Mac — a fanless laptop has no fans, a desktop
-    /// has no battery — so the section draws only what this machine reports and
-    /// disappears entirely on a machine that reports none of it.
-    private static let sensorGroupOrder = ["Temperature", "Fans", "Power"]
-
-    private func groups(in order: [String]) -> [(name: String, metrics: [MetricID])] {
-        let available = Dictionary(
-            model.groups().map { ($0.name, $0.metrics) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        return order.compactMap { name in
-            guard let metrics = available[name], !metrics.isEmpty else { return nil }
-            return (name: name, metrics: metrics)
-        }
-    }
-
     /// The line between the two sections. Deliberately the same rule as the one
     /// under the gauges, minus the drag: one kind of divider on the panel.
     private var sectionRule: some View {
@@ -243,14 +210,14 @@ public struct DashboardView: View {
             .padding(.vertical, 2)
     }
 
-    private func charts(_ order: [String]) -> some View {
+    private func charts(_ groups: [(name: String, metrics: [MetricID])]) -> some View {
         LazyVGrid(
             columns: [GridItem(
                 .adaptive(minimum: Theme.Layout.chartMinimum), spacing: Theme.Layout.gridSpacing
             )],
             spacing: Theme.Layout.gridSpacing
         ) {
-            ForEach(groups(in: order), id: \.name) { group in
+            ForEach(groups, id: \.name) { group in
                 ChartCard(
                     title: group.name,
                     series: group.metrics.compactMap { metric in
