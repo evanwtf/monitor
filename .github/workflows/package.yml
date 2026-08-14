@@ -43,7 +43,20 @@ jobs:
       - name: Test
         run: swift test
 
+      # Signing and notarizing are opt-in through repository variables, and both
+      # are all-or-nothing once set. The credentials live in the runner's own
+      # keychain — this is a Mac on a desk, not a disposable VM — so nothing
+      # secret passes through GitHub and these two variables are only names.
+      #
+      #   SIGN_IDENTITY    e.g. "Developer ID Application: NAME (TEAMID)"
+      #   NOTARY_PROFILE   a notarytool credential profile on that Mac
+      #
+      # Unset, a release is ad-hoc signed and unnotarized, exactly as before.
+      # Set, a failure to sign or notarize fails the release rather than
+      # quietly publishing a zip nobody can open. See docs/signing.md.
       - name: Build monitor.app
+        env:
+          MONITOR_SIGN_IDENTITY: ${{ vars.SIGN_IDENTITY }}
         run: Scripts/make-app.sh
 
       # ditto, not zip: a bundle holds symlinks and extended attributes, and
@@ -57,8 +70,23 @@ jobs:
           name="monitor-${version}.zip"
           ditto -c -k --keepParent .build/monitor.app "$name"
           echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "sha=$(shasum -a 256 "$name" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          ls -lh "$name"
+
+      # Between zipping and the checksum, because notarize.sh rebuilds the zip
+      # around the stapled bundle: a checksum taken before this describes a file
+      # that no longer exists.
+      - name: Notarize
+        if: vars.NOTARY_PROFILE != ''
+        env:
+          MONITOR_NOTARY_PROFILE: ${{ vars.NOTARY_PROFILE }}
+        run: Scripts/notarize.sh .build/monitor.app "${{ steps.package.outputs.name }}"
+
+      - name: Checksum
+        id: checksum
+        env:
+          ZIP: ${{ steps.package.outputs.name }}
+        run: |
+          echo "sha=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          ls -lh "$ZIP"
 
       # Uploaded on every run, released or not, so a manual run is a way to get
       # a build without publishing anything.
@@ -74,7 +102,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag }}
           ZIP: ${{ steps.package.outputs.name }}
-          SHA: ${{ steps.package.outputs.sha }}
+          SHA: ${{ steps.checksum.outputs.sha }}
         run: |
           if ! command -v gh >/dev/null 2>&1; then brew install gh; fi
           # The checksum rides along as a file rather than a line in the notes:

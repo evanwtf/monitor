@@ -12,9 +12,19 @@
 #   Scripts/make-app.sh              # build into .build/monitor.app
 #   Scripts/make-app.sh ~/Applications   # and copy it there
 #
-# No signing identity is used. The bundle is signed ad-hoc, which is what a
-# locally built app needs to keep a stable identity across launches. Shipping it
-# to another Mac needs a Developer ID and notarization, which this does not do.
+# Signing is by identity when there is one and ad-hoc when there is not:
+#
+#   MONITOR_SIGN_IDENTITY   codesign identity. Set it and signing must succeed;
+#                           the script fails rather than quietly shipping an
+#                           ad-hoc bundle nobody can install.
+#   unset                   a "Developer ID Application" identity in the
+#                           keychain is used if one is there, and an ad-hoc
+#                           signature if not.
+#
+# An ad-hoc signature is right for a local build — it keeps the app's identity
+# stable across rebuilds so macOS does not forget what it remembered about it —
+# and useless for shipping, because Gatekeeper rejects a downloaded copy. See
+# docs/signing.md.
 
 set -euo pipefail
 
@@ -89,10 +99,37 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# Ad-hoc signature. Without one the bundle still runs, but macOS treats it as a
-# different app on every rebuild and forgets anything it remembered about it.
-codesign --force --sign - --timestamp=none "$app" >/dev/null 2>&1 \
-    || echo "warning: could not sign $app; it will still run" >&2
+# The identity to sign with: whatever was asked for, or a Developer ID in the
+# keychain, or nothing.
+identity="${MONITOR_SIGN_IDENTITY:-}"
+required=1
+if [ -z "$identity" ]; then
+    required=0
+    identity="$(security find-identity -v -p codesigning 2>/dev/null \
+        | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"
+fi
+
+if [ -n "$identity" ]; then
+    # --options runtime and a secure timestamp are not optional extras: the
+    # notary service rejects a bundle without either, and both are impossible
+    # to add afterwards without signing again.
+    echo "Signing as ${identity}…"
+    if ! codesign --force --deep --options runtime --timestamp \
+            --sign "$identity" "$app"; then
+        echo "error: could not sign $app as $identity" >&2
+        exit 1
+    fi
+    codesign --verify --strict --verbose=2 "$app" 2>&1 | sed 's/^/  /'
+elif [ "$required" -eq 1 ]; then
+    echo "error: MONITOR_SIGN_IDENTITY is set but empty" >&2
+    exit 1
+else
+    # Ad-hoc. Without a signature the bundle still runs, but macOS treats it as
+    # a different app on every rebuild and forgets anything it remembered.
+    codesign --force --sign - --timestamp=none "$app" >/dev/null 2>&1 \
+        || echo "warning: could not sign $app; it will still run" >&2
+    echo "Signed ad-hoc — fine locally, not installable on another Mac."
+fi
 
 echo "Built $app"
 
