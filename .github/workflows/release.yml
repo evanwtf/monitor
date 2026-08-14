@@ -1,14 +1,27 @@
 name: Release
 
-# Two ways a release begins, and both end in the Package workflow:
+# Every merge to main ships a release, and this workflow works out which
+# version it is.
 #
-#   1. A pull request lands on main that bumps `MonitorVersion.string`. This
-#      workflow tags that commit and publishes the release.
-#   2. Somebody publishes a release by hand from the GitHub UI.
+# The default is a patch bump. A `release:minor` or `release:major` label on
+# the pull request says otherwise, so the size of a release is decided during
+# review, on the pull request, rather than remembered at merge time. Labels
+# rather than commit-message prefixes because the commit style here is prose —
+# see AGENTS.md — and `feat:` in front of it would be a tax on every message
+# for the sake of two merges in ten.
 #
-# So shipping is a line in a diff, reviewed like any other change. A merge that
-# does not touch the version publishes nothing — most merges should not ship a
-# release, and a docs typo is not a new version.
+# Two things publish nothing: a `release:skip` label, and a merge that touched
+# only documentation or workflows. A typo in the README is not a new version.
+#
+# Two escape hatches survive from when every release was hand-cut:
+#
+#   1. A pull request that bumps `MonitorVersion.string` itself ships exactly
+#      that version. The automatic path is the default, not the only way.
+#   2. Somebody publishes a release by hand from the GitHub UI, which enters at
+#      the Package job below.
+#
+# The bump is committed back to main as `Version x.y.z [skip ci]`. The marker
+# is what stops this workflow from triggering itself, so do not remove it.
 #
 # A release created here by `gh` does *not* fire the `release: published`
 # event, because GitHub deliberately refuses to let the default token trigger
@@ -29,19 +42,27 @@ permissions:
   contents: write
 
 jobs:
-  # Decides whether this merge is a release, and creates it if it is.
+  # Works out this merge's version, writes it to Version.swift, and creates the
+  # release.
   tag:
     name: Tag a new version
-    if: github.event_name == 'push'
+    # The `[skip ci]` in the bump commit already stops GitHub from starting a
+    # run for it. This is the second lock on the same door: a workflow that can
+    # push to the branch it watches has to be unable to answer itself.
+    if: |
+      github.event_name == 'push'
+        && !contains(github.event.head_commit.message, '[skip ci]')
     # git and gh only — no build — so this stays off the Mac runner, which the
     # packaging job needs to itself.
     runs-on: [self-hosted, Linux, X64]
     outputs:
       tag: ${{ steps.check.outputs.tag }}
+      sha: ${{ steps.check.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # gh needs the tags to answer "does this one exist yet".
+          # gh needs the tags to answer "does this one exist yet", and the
+          # docs-only test needs the previous commit to diff against.
           fetch-depth: 0
 
       - name: Version
@@ -49,19 +70,83 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version="$(sed -n 's/.*static let string = "\(.*\)".*/\1/p' \
-              Sources/MonitorCore/Version.swift)"
-          [ -n "$version" ] || { echo "no version in Version.swift" >&2; exit 1; }
-          tag="v$version"
+          set -euo pipefail
 
-          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            echo "$tag exists — this merge is not a release." >> "$GITHUB_STEP_SUMMARY"
-            echo "Bump MonitorVersion.string to ship one." >> "$GITHUB_STEP_SUMMARY"
+          current="$(sed -n 's/.*static let string = "\(.*\)".*/\1/p' \
+              Sources/MonitorCore/Version.swift)"
+          [ -n "$current" ] || { echo "no version in Version.swift" >&2; exit 1; }
+
+          # Escape hatch: a pull request that set the version itself ships that
+          # version untouched, exactly as it did before any of this was
+          # automatic.
+          if ! git rev-parse -q --verify "refs/tags/v$current" >/dev/null; then
+            echo "tag=v$current" >> "$GITHUB_OUTPUT"
+            echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            echo "Version.swift already says $current — releasing that." \
+                >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Releasing $tag" >> "$GITHUB_STEP_SUMMARY"
+          # Labels of the pull request this commit came from. A direct push to
+          # main belongs to no pull request, which is simply no labels.
+          labels="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+              --jq '.[].labels[].name' | sort -u || true)"
+
+          if grep -qx 'release:skip' <<<"$labels"; then
+            echo "Labelled release:skip — publishing nothing." \
+                >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Documentation and workflow changes do not earn a version. The test
+          # is "nothing outside these paths changed", so a merge that touches
+          # docs *and* code still ships.
+          changed="$(git diff --name-only "$GITHUB_SHA^" "$GITHUB_SHA")"
+          if [ -n "$changed" ] \
+              && ! grep -qvE '^(docs/|\.github/|[^/]*\.md$)' <<<"$changed"; then
+            echo "Documentation only — publishing nothing." \
+                >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          level="patch"
+          if grep -qx 'release:minor' <<<"$labels"; then level="minor"; fi
+          if grep -qx 'release:major' <<<"$labels"; then level="major"; fi
+
+          IFS=. read -r major minor patch <<<"$current"
+          case "$level" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+          next="$major.$minor.$patch"
+
+          if git rev-parse -q --verify "refs/tags/v$next" >/dev/null; then
+            echo "v$next already exists — refusing to overwrite it." >&2
+            exit 1
+          fi
+
+          sed -i "s/static let string = \"$current\"/static let string = \"$next\"/" \
+              Sources/MonitorCore/Version.swift
+          # A no-op sed means the literal moved or changed shape. Better to
+          # stop than to tag a commit that still says the old version.
+          if git diff --quiet; then
+            echo "version rewrite did nothing" >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email \
+              "41898282+github-actions[bot]@users.noreply.github.com"
+          # The marker is load-bearing: without it this commit starts another
+          # run of this workflow, which bumps the version again, forever.
+          git commit -qam "Version $next [skip ci]"
+          git push -q origin HEAD:main
+
+          echo "tag=v$next" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$next ($level bump from $current)" \
+              >> "$GITHUB_STEP_SUMMARY"
 
       # The app is signed ad-hoc, not with a Developer ID, and it is not
       # notarized. macOS quarantines anything a browser downloads, so without
@@ -73,6 +158,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.check.outputs.tag }}
+          # The bump commit, not the merge commit: the tag has to point at the
+          # code that carries this version number, or `monitor.app` reports the
+          # one before it.
+          SHA: ${{ steps.check.outputs.sha }}
         run: |
           command -v gh >/dev/null 2>&1 \
               || { echo "gh is not installed on this runner" >&2; exit 1; }
@@ -92,7 +181,7 @@ jobs:
           NOTES
 
           gh release create "$TAG" \
-              --target "$GITHUB_SHA" \
+              --target "$SHA" \
               --title "monitor ${TAG#v}" \
               --notes-file notes.md \
               --generate-notes

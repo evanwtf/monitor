@@ -81,7 +81,7 @@ Tests/             MonitorCoreTests, MonitorSourcesTests, MonitorStoreTests
 docs/              README.md is the index
 .github/workflows/
   ci.yml           build, test, release build, CLI smoke test, lint
-  release.yml      tags a version bump merged to main, publishes the release
+  release.yml      bumps the version on a merge to main, tags it, releases it
   package.yml      reusable: builds monitor.app, zips it, attaches it to a tag
 ```
 
@@ -143,12 +143,22 @@ are no component-level AGENTS.md files.
   `docs/sensors.md` is the survey of what a Mac exposes and what it costs.
 - **The panel has two sections.** Performance above the rule, sensors below.
   The sensor section vanishes on a machine that reports none of it.
-- **Releasing is a version bump, nothing else.** Merge a pull request that
-  changes `MonitorVersion.string` and `release.yml` tags that commit, publishes
-  a release, and attaches `monitor-<version>.zip` built by `package.yml`. A
-  merge that leaves the version alone publishes nothing, which is what most
-  merges should do. A release published by hand from the GitHub UI gets its zip
-  the same way.
+- **Releasing is a merge, nothing else.** `release.yml` bumps
+  `MonitorVersion.string` itself on every merge to main, commits it back as
+  `Version x.y.z [skip ci]`, tags it, publishes the release and attaches
+  `monitor-<version>.zip` built by `package.yml`. **Never remove the
+  `[skip ci]`** — it is what stops the workflow triggering itself into an
+  endless bump.
+  - **The default is a patch bump.** `release:minor` or `release:major` on the
+    pull request says otherwise, so the size of a release is decided in review
+    rather than remembered at merge time. Labels rather than Conventional
+    Commit prefixes, because the commit style here is prose.
+  - **Two ways to publish nothing:** a `release:skip` label, or a merge that
+    touched only `docs/`, `.github/` and top-level `*.md`. A merge touching
+    docs *and* code still ships.
+  - **Two escape hatches:** a pull request that sets `MonitorVersion.string`
+    itself ships exactly that version, and a release published by hand from the
+    GitHub UI gets its zip the same way.
 - **The version lives in `MonitorCore/Version.swift`.** The About panel reads
   it at runtime and `make-app.sh` greps that file when it writes `Info.plist`,
   so a bundled build and `swift run monitor` cannot claim different versions.
@@ -244,7 +254,10 @@ are no component-level AGENTS.md files.
   workflow rather than listening for `release: published`, because a release
   created with the default `GITHUB_TOKEN` does not fire that event. Splitting
   them into two independent workflows would publish releases with no zip
-  attached.
+  attached. It also pushes to the branch it watches, which is a loop unless
+  both locks stay on: `[skip ci]` in the bump commit, and the `if:` guard on
+  the `tag` job that ignores a commit carrying it. The tag targets the bump
+  commit rather than `GITHUB_SHA`, or the zip reports the version before it.
 
 ## Troubleshooting
 
@@ -261,6 +274,13 @@ are no component-level AGENTS.md files.
   the candidate list in `GPUSource`.
 - **A pull request reports no CI**: it came from a fork, and the jobs skip fork
   pull requests on purpose. Re-run from a branch in this repository.
+- **A pull request reports no CI and did not come from a fork**: its commit
+  message or pull request body contains the skip-ci marker, probably while
+  *describing* the release workflow. GitHub reads that marker anywhere in a
+  commit message and starts no run at all, and a squash merge takes the pull
+  request body as the commit message — so a merge like that would also skip
+  the release. Write the marker as "skip-ci" in prose and keep the literal
+  form inside `release.yml`.
 - **CPU shows no cluster series**: correct on a machine with one performance
   level, or when the `hw.perflevel*` core counts do not sum to the core count.
   `CPUSource.readClusters` returns empty rather than guess a wrong split.
