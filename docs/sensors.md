@@ -122,6 +122,49 @@ Reading them all costs about 0.15 ms per key, so a tick of this source runs
 around 15 ms here against 4 ms when it sampled six. That is the price of the
 metric meaning what it says.
 
+## How often it is worth reading them
+
+**The SMC refreshes temperature and power once a second.** Sampled at 4.4 Hz
+for 17 minutes across an idle machine, a load ramp and a cooldown:
+
+| Sensor | Reads that changed | Median gap between changes | p90 |
+|---|---|---|---|
+| CPU temperature | 22.3% | 0.92 s | 1.14 s |
+| GPU temperature | 21.2% | 0.92 s | 1.15 s |
+| SoC power | 22.6% | 0.92 s | 1.13 s |
+| Fan 1 speed | 63.1% | 0.23 s | 0.24 s |
+
+A gap that sits at 0.9–1.1 s while sampling every 0.23 s is a 1 Hz clock
+beating against the sampler. It is not rounding: the value quantum is 1/64 °C,
+so an identical consecutive read is genuinely no new value. **Fan tachometers
+are the exception** — they change on most reads and resolve to 1 rpm — but they
+ride the same IOKit round trip as the rest, so they cannot be read faster
+without paying for everything else too.
+
+Decimating that trace to what a sampler would actually see, against the full
+rate as truth:
+
+| Interval | CPU worst error | GPU worst error | SoC peak missed |
+|---|---|---|---|
+| 0.5 s | 1.8 °C | 4.5 °C | 0.0 W |
+| **1 s** | **1.8 °C** | **4.5 °C** | **0.0 W** |
+| 2 s | 2.7 °C | 5.4 °C | 1.1 W |
+| 5 s | 5.8 °C | 8.8 °C | 19.3 W |
+| 10 s | 10.7 °C | 13.0 °C | 1.1 W |
+
+0.5 s and 1 s are identical, which is the whole argument: **1 s is the floor**,
+and everything faster is an IOKit round trip to be told the same number again.
+2 s costs under a degree of worst-case error and is a reasonable quiet setting.
+5 s is defensible for temperature and poor for power, which swings 19 W between
+readings. 10 s is not offered.
+
+Power is irreducibly spiky, and no interval fixes it: even at 0.5 s the worst
+gap between the chart and the truth is 35 W, because SoC power genuinely moves
+that far between the SMC's own updates.
+
+`SMCSource.minimumInterval` is 1 s for these reasons, and the sampler skips the
+source entirely on ticks that would fall inside it.
+
 Charts are pinned to 0–110 °C rather than auto-scaled, for the same reason CPU
 load is pinned to 0–100%: a chart scaled to 2 °C of drift makes a cool machine
 look like a fire.

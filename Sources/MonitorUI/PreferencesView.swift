@@ -19,6 +19,8 @@ public struct PreferencesView: View {
         TabView {
             LayoutTab(model: model)
                 .tabItem { Label("Layout", systemImage: "square.grid.2x2") }
+            SamplingTab(model: model)
+                .tabItem { Label("Sampling", systemImage: "timer") }
         }
         .frame(width: 460, height: 520)
     }
@@ -170,6 +172,75 @@ struct LayoutTab: View {
             Spacer()
         }
         .padding(16)
+    }
+}
+
+/// How often each kind of source is read.
+///
+/// Two rates rather than one, because the hardware underneath differs. Counters
+/// are current whenever they are asked, so their rate is a choice about detail.
+/// The SMC refreshes once a second, so anything faster reads the same number
+/// twice — which is why the sensor list starts at 1 s rather than offering the
+/// 0.25 s the counters allow.
+struct SamplingTab: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Performance", selection: $model.sampling.performance) {
+                    ForEach(SamplingPreferences.performanceChoices, id: \.self) { seconds in
+                        Text(label(seconds)).tag(seconds)
+                    }
+                }
+            } footer: {
+                Text(
+                    "CPU, memory, disk and network. These are read straight from "
+                        + "the kernel and are current whenever they are asked, so "
+                        + "this is a choice about how much detail you want."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section {
+                Picker("Sensors", selection: $model.sampling.sensors) {
+                    ForEach(SamplingPreferences.sensorChoices, id: \.self) { seconds in
+                        Text(label(seconds)).tag(seconds)
+                    }
+                }
+                if model.sampling.effectiveSensorInterval != model.sampling.sensors {
+                    // Sensors ride the master clock, so they cannot run faster
+                    // than it. Saying so beats silently ignoring the setting.
+                    Text(
+                        "Sampling every \(label(model.sampling.effectiveSensorInterval)): "
+                            + "sensors cannot be read more often than the "
+                            + "performance rate."
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            } footer: {
+                Text(
+                    "Temperature, fans and power. The SMC refreshes these once a "
+                        + "second, so 1 s is as fast as there is anything new to "
+                        + "read — and reading it costs about four times what "
+                        + "everything else costs put together."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func label(_ seconds: TimeInterval) -> String {
+        seconds < 1
+            ? String(format: "%.2g s", seconds)
+            : String(format: "%.0f s", seconds)
     }
 }
 

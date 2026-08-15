@@ -28,6 +28,21 @@ import MonitorCore
 public final class SMCSource: MetricSource, @unchecked Sendable {
     public let id = "sensors"
 
+    /// The SMC refreshes its temperature and power keys once a second.
+    ///
+    /// Measured, not assumed: sampled at 5 Hz under load, `Tp…` values change
+    /// on 22% of reads, and the gaps between changes cluster at 0.9 s and 1.1 s
+    /// — a 1 Hz clock beating against the sampling rate. The value quantum is
+    /// 1/64 °C, so identical consecutive reads are genuinely no new value
+    /// rather than a rounded one. Decimating a 5 Hz trace to 1 s reproduces it
+    /// exactly; the first losses appear at 2 s. `docs/sensors.md` has the
+    /// numbers.
+    ///
+    /// Fan tachometers are the exception — they change on 95% of reads at
+    /// 5 Hz — but they ride the same IOKit round trip as everything else here,
+    /// so they cannot be read faster without paying for the rest.
+    public let minimumInterval: TimeInterval = 1.0
+
     public static let cpuTemperature = MetricID("sensor.temperature.cpu")
     public static let gpuTemperature = MetricID("sensor.temperature.gpu")
     public static let storageTemperature = MetricID("sensor.temperature.storage")

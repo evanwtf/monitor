@@ -26,17 +26,45 @@ public final class AppModel {
     public var layout: LayoutPreferences {
         didSet {
             guard layout != oldValue else { return }
-            LayoutPreferencesStore.save(layout)
+            LayoutPreferencesStore.save(layout, to: defaults)
         }
     }
 
-    /// Half a second by default rather than one. Reading every source costs
-    /// well under a millisecond, and at 1 Hz the gauges visibly step: the
-    /// needle animation can smooth the gap, but it cannot invent detail that
-    /// was never sampled, so a short spike between ticks is simply missed.
-    public var interval: TimeInterval = 0.5 {
-        didSet { Task { await sampler.setInterval(interval) } }
+    /// Where preferences are read and written.
+    ///
+    /// Injected rather than reached for, so a test can build a model without
+    /// editing the preferences of whoever is running it. That is not a
+    /// hypothetical: the first run of these tests turned on a gauge in the real
+    /// panel and left it there.
+    private let defaults: UserDefaults
+
+    /// How often each kind of source is read.
+    ///
+    /// Half a second for counters rather than one: reading them costs well
+    /// under a millisecond, and at 1 Hz the gauges visibly step — the needle
+    /// animation can smooth the gap, but it cannot invent detail that was never
+    /// sampled, so a short spike between ticks is simply missed.
+    ///
+    /// One second for sensors, because that is how often the SMC has anything
+    /// new to say.
+    public var sampling: SamplingPreferences = .default {
+        didSet {
+            guard sampling != oldValue else { return }
+            SamplingPreferencesStore.save(sampling, to: defaults)
+            Task { await sampler.setInterval(sampling.performance) }
+        }
     }
+
+    /// The master clock, which is also the counter sources' rate.
+    public var interval: TimeInterval {
+        get { sampling.performance }
+        set { sampling.performance = newValue }
+    }
+
+    /// Ticks since the pump started, so a slow source can be read on every nth
+    /// one. A counter rather than a deadline per source: it cannot drift, and
+    /// every sample still lands on a master tick's timestamp.
+    private var tickCount = 0
 
     /// How much live history to keep: ten minutes at two samples a second.
     public let historyCapacity = 1200
@@ -45,14 +73,28 @@ public final class AppModel {
     private let sampler: Sampler
     private var pump: Task<Void, Never>?
 
-    public init(sources: [any MetricSource] = SourceRegistry.makeAll()) {
+    public init(
+        sources: [any MetricSource] = SourceRegistry.makeAll(),
+        defaults: UserDefaults = LayoutPreferencesStore.suite
+    ) {
+        self.defaults = defaults
         let all = sources.flatMap(\.descriptors)
         descriptors = Dictionary(
             all.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
         )
-        sampler = Sampler(sources: sources, sinks: [], interval: 0.5)
-        layout = LayoutPreferencesStore.load(for: all)
+        metricsBySource = Dictionary(
+            sources.map { ($0.id, Set($0.descriptors.map(\.id))) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        slowSources = sources
+            .filter { $0.minimumInterval > 0 }
+            .map { (id: $0.id, minimum: $0.minimumInterval) }
+
+        let stored = SamplingPreferencesStore.load(from: defaults)
+        sampling = stored
+        sampler = Sampler(sources: sources, sinks: [], interval: stored.performance)
+        layout = LayoutPreferencesStore.load(for: all, from: defaults)
 
         // A scale for every metric, not only the ones a dial shows today. Any
         // metric can be given a dial in preferences, and auto-ranging needs
@@ -69,8 +111,10 @@ public final class AppModel {
         pump = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let batch = await sampler.tick()
-                ingest(batch)
+                let skipped = sourcesToSkipThisTick()
+                let batch = await sampler.tick(skipping: skipped)
+                ingest(batch, skipped: skipped)
+                tickCount += 1
                 try? await Task.sleep(for: .seconds(interval))
             }
         }
@@ -81,7 +125,31 @@ public final class AppModel {
         pump = nil
     }
 
-    func ingest(_ batch: SampleBatch) {
+    /// Metric ids per source, so a source skipped this tick can be excluded
+    /// from the "produced nothing, must be broken" test below.
+    private let metricsBySource: [String: Set<MetricID>]
+
+    /// Sources that cannot produce a new value on every tick, with the floor
+    /// the hardware imposes.
+    private let slowSources: [(id: String, minimum: TimeInterval)]
+
+    /// Which sources to leave alone on this tick.
+    ///
+    /// A slow source is read at whichever is longer: the floor its hardware
+    /// imposes, or the interval asked for in preferences. Rounded to a whole
+    /// number of master ticks, so its samples share timestamps with everything
+    /// else instead of drifting against them.
+    private func sourcesToSkipThisTick() -> Set<String> {
+        var skipped: Set<String> = []
+        for source in slowSources {
+            let wanted = max(source.minimum, sampling.sensors)
+            let divisor = max(1, Int((wanted / max(interval, 0.001)).rounded()))
+            if tickCount % divisor != 0 { skipped.insert(source.id) }
+        }
+        return skipped
+    }
+
+    func ingest(_ batch: SampleBatch, skipped: Set<String> = []) {
         var seen: Set<MetricID> = []
         for sample in batch.samples {
             seen.insert(sample.metric)
@@ -92,8 +160,16 @@ public final class AppModel {
             scales[sample.metric]?.update(value: sample.value, at: sample.timestamp)
         }
         // A metric with a descriptor that produced no sample this tick is a
-        // source that failed or is not present on this machine.
-        unavailable = Set(descriptors.keys).subtracting(seen).subtracting(warmingUp)
+        // source that failed or is not present on this machine — unless it was
+        // simply not asked. A sensor read once a second must not grey its card
+        // out on the ticks in between.
+        let notAsked = skipped.reduce(into: Set<MetricID>()) { ids, source in
+            ids.formUnion(metricsBySource[source] ?? [])
+        }
+        unavailable = Set(descriptors.keys)
+            .subtracting(seen)
+            .subtracting(warmingUp)
+            .subtracting(notAsked)
     }
 
     /// Rate metrics have no value on the first tick by design, so they must not
