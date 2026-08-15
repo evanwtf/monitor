@@ -28,6 +28,21 @@ import MonitorCore
 public final class SMCSource: MetricSource, @unchecked Sendable {
     public let id = "sensors"
 
+    /// The SMC refreshes its temperature and power keys once a second.
+    ///
+    /// Measured, not assumed: sampled at 5 Hz under load, `Tp…` values change
+    /// on 22% of reads, and the gaps between changes cluster at 0.9 s and 1.1 s
+    /// — a 1 Hz clock beating against the sampling rate. The value quantum is
+    /// 1/64 °C, so identical consecutive reads are genuinely no new value
+    /// rather than a rounded one. Decimating a 5 Hz trace to 1 s reproduces it
+    /// exactly; the first losses appear at 2 s. `docs/sensors.md` has the
+    /// numbers.
+    ///
+    /// Fan tachometers are the exception — they change on 95% of reads at
+    /// 5 Hz — but they ride the same IOKit round trip as everything else here,
+    /// so they cannot be read faster without paying for the rest.
+    public let minimumInterval: TimeInterval = 1.0
+
     public static let cpuTemperature = MetricID("sensor.temperature.cpu")
     public static let gpuTemperature = MetricID("sensor.temperature.gpu")
     public static let storageTemperature = MetricID("sensor.temperature.storage")
@@ -107,10 +122,9 @@ public final class SMCSource: MetricSource, @unchecked Sendable {
             let wanted = temperatures.filter { key in
                 prefixes.contains(where: { key.name.hasPrefix($0) }) || exact.contains(key.name)
             }
-            // Capped because reading a key costs an IOKit round trip and a
-            // machine can publish twenty CPU die sensors. Six of them, read
-            // twice a second forever, is a cost worth paying; twenty is not,
-            // and they move together anyway.
+            // Every matching key, not a sample of them. `hottest` means the
+            // hottest of what this machine publishes, and taking the first few
+            // in registry order would quietly make it mean something else.
             return Array(wanted.prefix(maximumKeysPerSensor))
         }
 
@@ -227,6 +241,29 @@ public final class SMCSource: MetricSource, @unchecked Sendable {
 
     /// Where Apple silicon starts throttling, and so the top of a chart.
     private static let temperatureCeiling = 110.0
-    private static let maximumKeysPerSensor = 6
+
+    /// A bound on how many keys one sensor may read, not a sampling policy.
+    ///
+    /// It was six, which was wrong in a way that did not look wrong: a machine
+    /// with more die sensors than that reported the hottest of an arbitrary
+    /// six, while the metric said "hottest". A 16-inch MacBook Pro publishes 23
+    /// `Tp…` keys, so the reading could sit three degrees under the real peak
+    /// and nothing anywhere said so.
+    ///
+    /// The cost is real but smaller than the wrongness. One key costs about
+    /// 0.15 ms, and the same machine publishes **84** `Tg…` GPU sensors on top
+    /// of the 23 CPU ones, so the whole source goes from 3.9 ms to 15.5 ms per
+    /// tick. Measured, not estimated — the six was estimated, and that is how
+    /// it came to be wrong.
+    ///
+    /// This is now high enough never to bind on any Mac seen so far. It exists
+    /// so a machine that publishes something absurd cannot make the sampler
+    /// unbounded, not to decide which sensors count.
+    ///
+    /// Key counts vary enormously between models: a machine with one GPU
+    /// sensor and a machine with 84 are both normal, and the count is not
+    /// predictable from the model name. Everything here is discovered at
+    /// launch for that reason.
+    private static let maximumKeysPerSensor = 64
     private static let maximumFans = 4
 }

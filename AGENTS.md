@@ -64,14 +64,14 @@ look at it in the app.
 Sources/
   MonitorCore/     metric model, ring buffer, downsampling, gauge auto-ranging,
                    seven-segment digit mapping, formatting, the sampling clock,
-                   the layout preferences model. No macOS APIs — so all of it is
+                   the layout and sampling preference models. No macOS APIs — so all of it is
                    testable without a machine to read.
   MonitorSources/  the readers: CPU, memory, disk, network, GPU, SMC sensors
                    (temperature, fans, power), and the registry that lists them.
                    One file per source, plus SMC.swift for the SMC transport.
   MonitorUI/       Theme (palette + Layout density), GaugeView, SevenSegmentText,
                    ChartCard, FlowLayout, DashboardView, PreferencesView,
-                   AppModel, LayoutPreferencesStore
+                   AppModel, LayoutPreferencesStore (layout + sampling)
   MonitorStore/    SQLite history and retention. Designed and tested but NOT
                    linked into the app — see "Guardrails" below.
   monitor/         the app target (@main SwiftUI App) and its AppDelegate
@@ -79,7 +79,8 @@ Sources/
 Scripts/           make-app.sh, which builds monitor.app, make-icon.swift,
                    which draws its icon, and notarize.sh, which notarizes and
                    staples a Developer ID build
-Tests/             MonitorCoreTests, MonitorSourcesTests, MonitorStoreTests
+Tests/             MonitorCoreTests, MonitorSourcesTests, MonitorStoreTests,
+                   MonitorUITests
 docs/              README.md is the index
 .github/workflows/
   ci.yml           build, test, release build, CLI smoke test, lint
@@ -124,7 +125,7 @@ are no component-level AGENTS.md files.
   chart answers "what has been happening" (CPU, memory). `LayoutDefaults`
   encodes the split — but as an opening position, not a rule.
 - **The layout is chosen per metric, in preferences.** Cmd-, opens a tabbed
-  window whose one tab, Layout, lists every metric with a Gauge checkbox and a
+  window. Its **Layout** tab lists every metric with a Gauge checkbox and a
   Chart checkbox, grouped into collapsible sections whose headings carry the
   same two checkboxes for the whole group. The two columns are not symmetrical:
   **a gauge is per metric, a chart is per group.** Ticking Network In and Network Out gives two dials and *one*
@@ -132,17 +133,29 @@ are no component-level AGENTS.md files.
   other. `LayoutPreferences` (in `MonitorCore`, so the merge rules are testable)
   tracks which metrics it has an opinion about as well as which are on —
   otherwise a metric added by a later version is indistinguishable from one
-  somebody switched off, and stays silently missing.
-- **One clock.** `Sampler.tick(at:)` reads every source at one timestamp so a
-  batch lines up on the x-axis. A source that throws is logged and skipped for
-  that tick only. `AppModel` samples at 0.5 s into a 1200-point ring buffer —
-  ten minutes of history, all of it in memory.
+  somebody switched off, and stays silently missing. Its **Sampling** tab sets
+  the two rates: performance and sensors.
+- **One clock, but not one rate.** `Sampler.tick(at:)` reads every source at
+  one timestamp so a batch lines up on the x-axis. A source that throws is
+  logged and skipped for that tick only. `AppModel` samples at 0.5 s into a
+  1200-point ring buffer — ten minutes of history, all of it in memory.
+  A source that cannot produce a new value that often declares a
+  `minimumInterval` and is read on every *n*th tick of the same clock, never on
+  a timer of its own: its samples must land on the same timestamps as
+  everything else. `SMCSource` declares 1 s because the SMC refreshes at 1 Hz,
+  measured — see `docs/sensors.md`. **A skipped source is not a failed one**:
+  `ingest` must exclude it from the unavailable set, or its cards grey
+  themselves out on every tick in between.
 - **Sensors are found, not assumed.** `SMCSource` scans the SMC's key table at
   launch and declares a metric only if this machine publishes sensors for it —
   so a fanless Mac shows no Fans card rather than one reading zero, and an Intel
   `TC0P` feeds the same CPU metric as Apple silicon's `Tp01`. Everything it
   reads is unprivileged; root is needed only to *write* a key, which it cannot.
   `docs/sensors.md` is the survey of what a Mac exposes and what it costs.
+  **How many keys a family has is wildly model-dependent** — 84 GPU sensors and
+  23 CPU ones on a 16-inch MacBook Pro, none of it predictable from the model
+  name — so never hard-code a count or a list per model, and never sample a
+  subset of a family whose metric claims to be the hottest of it.
 - **The panel has two sections.** Performance above the rule, sensors below.
   The sensor section vanishes on a machine that reports none of it.
 - **Releasing is a merge, nothing else.** `release.yml` bumps

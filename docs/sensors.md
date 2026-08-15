@@ -83,19 +83,87 @@ same CPU metric as Apple silicon's `Tp01`.
 
 | Metric | Keys | Notes |
 |--------|------|-------|
-| `sensor.temperature.cpu` | `Tp…`, `Te…`; Intel `TC0P`/`TC0D`/`TCXC` | hottest of up to six die sensors |
-| `sensor.temperature.gpu` | `Tg…`; Intel `TG0P`/`TG0D` | |
-| `sensor.temperature.storage` | `TH0…` | internal SSD |
-| `sensor.temperature.battery` | `TB…T` | |
+| `sensor.temperature.cpu` | `Tp…`, `Te…`; Intel `TC0P`/`TC0D`/`TCXC` | hottest die sensor |
+| `sensor.temperature.gpu` | `Tg…`; Intel `TG0P`/`TG0D` | hottest die sensor |
+| `sensor.temperature.storage` | `TH0…` | internal SSD, including the NAND sensor |
+| `sensor.temperature.battery` | `TB…T` | one metric per pack, hottest cell |
 | `sensor.temperature.enclosure` | `Ts…P` | the case, i.e. what your hands feel |
-| `sensor.temperature.ambient` | `TA…P` | absent on this machine |
+| `sensor.temperature.ambient` | `TA…P` | not published by every model |
 | `sensor.power.input` | `PDTR` | DC in |
 | `sensor.power.soc` | `PHPS` | package: CPU + GPU + memory |
-| `sensor.fan.N.speed` | `FNAc`, scaled by `FNMx` | absent on this machine |
+| `sensor.fan.N.speed` | `FNAc`, scaled by `FNMx` | fanless models publish none |
 
 Temperatures take the **hottest** of their sensors rather than the mean: the
 hot spot is what throttles the machine, and averaging fourteen die sensors
 hides the one that is about to.
+
+### How many keys is "their sensors"?
+
+Wildly model-dependent, and not predictable from the model name. A 16-inch
+MacBook Pro of 2026 publishes 568 readable keys, of which:
+
+| Family | Keys on that machine |
+|---|---|
+| GPU `Tg…` | 84 |
+| CPU `Tp…`/`Te…` | 23 |
+| SSD `TH0…` | 3 |
+| Battery `TB…T` | 3 |
+| Enclosure `Ts…P` | 2 |
+| Ambient `TA…P` | 0 |
+
+Another Mac will not match that table, which is the argument for discovering
+everything at launch rather than shipping a list per model. It is also why
+`hottest` must mean *all* of them: this source once read the first six of each
+family, so a machine with 23 die sensors reported the hottest of an arbitrary
+six and called it the hottest. On this machine that understated the CPU by
+three degrees.
+
+Reading them all costs about 0.15 ms per key, so a tick of this source runs
+around 15 ms here against 4 ms when it sampled six. That is the price of the
+metric meaning what it says.
+
+## How often it is worth reading them
+
+**The SMC refreshes temperature and power once a second.** Sampled at 4.4 Hz
+for 17 minutes across an idle machine, a load ramp and a cooldown:
+
+| Sensor | Reads that changed | Median gap between changes | p90 |
+|---|---|---|---|
+| CPU temperature | 22.3% | 0.92 s | 1.14 s |
+| GPU temperature | 21.2% | 0.92 s | 1.15 s |
+| SoC power | 22.6% | 0.92 s | 1.13 s |
+| Fan 1 speed | 63.1% | 0.23 s | 0.24 s |
+
+A gap that sits at 0.9–1.1 s while sampling every 0.23 s is a 1 Hz clock
+beating against the sampler. It is not rounding: the value quantum is 1/64 °C,
+so an identical consecutive read is genuinely no new value. **Fan tachometers
+are the exception** — they change on most reads and resolve to 1 rpm — but they
+ride the same IOKit round trip as the rest, so they cannot be read faster
+without paying for everything else too.
+
+Decimating that trace to what a sampler would actually see, against the full
+rate as truth:
+
+| Interval | CPU worst error | GPU worst error | SoC peak missed |
+|---|---|---|---|
+| 0.5 s | 1.8 °C | 4.5 °C | 0.0 W |
+| **1 s** | **1.8 °C** | **4.5 °C** | **0.0 W** |
+| 2 s | 2.7 °C | 5.4 °C | 1.1 W |
+| 5 s | 5.8 °C | 8.8 °C | 19.3 W |
+| 10 s | 10.7 °C | 13.0 °C | 1.1 W |
+
+0.5 s and 1 s are identical, which is the whole argument: **1 s is the floor**,
+and everything faster is an IOKit round trip to be told the same number again.
+2 s costs under a degree of worst-case error and is a reasonable quiet setting.
+5 s is defensible for temperature and poor for power, which swings 19 W between
+readings. 10 s is not offered.
+
+Power is irreducibly spiky, and no interval fixes it: even at 0.5 s the worst
+gap between the chart and the truth is 35 W, because SoC power genuinely moves
+that far between the SMC's own updates.
+
+`SMCSource.minimumInterval` is 1 s for these reasons, and the sampler skips the
+source entirely on ticks that would fall inside it.
 
 Charts are pinned to 0–110 °C rather than auto-scaled, for the same reason CPU
 load is pinned to 0–100%: a chart scaled to 2 °C of drift makes a cool machine

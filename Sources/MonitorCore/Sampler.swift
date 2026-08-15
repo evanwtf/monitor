@@ -10,6 +10,13 @@ public protocol SampleSink: Sendable {
 /// All sources are read on the same tick so their samples share a timestamp and
 /// line up on the x-axis. A source that throws is logged and skipped for that
 /// tick — one broken reader must not stop the rest.
+///
+/// A source may be read on only *some* ticks — sensors refresh once a second,
+/// so reading them at 2 Hz costs an IOKit round trip to be told the same number
+/// again. That is still one clock: a slow source is sampled on every nth tick
+/// of the same clock, not on a second timer. Its samples therefore land on
+/// exactly the same timestamps as everything else, which is what stops two
+/// series drifting apart on the x-axis.
 public actor Sampler {
     public private(set) var interval: TimeInterval
     private let sources: [any MetricSource]
@@ -56,12 +63,18 @@ public actor Sampler {
 
     /// Read every source once and forward the result. Public so `monitorctl`
     /// and the tests can drive sampling without a clock.
+    ///
+    /// `skipping` names sources to leave alone this tick, by `id`. A skipped
+    /// source contributes no samples, which is not the same as failing: the UI
+    /// keeps the last value and draws nothing new, rather than greying the card
+    /// out.
     @discardableResult
-    public func tick(at timestamp: TimeInterval = Date()
-        .timeIntervalSince1970) async -> SampleBatch
-    {
+    public func tick(
+        at timestamp: TimeInterval = Date().timeIntervalSince1970,
+        skipping: Set<String> = []
+    ) async -> SampleBatch {
         var samples: [Sample] = []
-        for source in sources {
+        for source in sources where !skipping.contains(source.id) {
             do {
                 let batch = try source.read(at: timestamp)
                 samples.append(contentsOf: batch.samples)

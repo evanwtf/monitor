@@ -9,7 +9,7 @@ import MonitorCore
 /// endurance — a monitor runs all day, and a sample every half second forever
 /// costs real writes. A checkbox written when somebody ticks it costs nothing,
 /// and the alternative is a preferences pane that forgets.
-enum LayoutPreferencesStore {
+public enum LayoutPreferencesStore {
     static let key = "layout.preferences"
 
     /// Named explicitly rather than taken from `.standard`.
@@ -22,7 +22,7 @@ enum LayoutPreferencesStore {
     /// Computed rather than stored because a `static let` holding a
     /// non-`Sendable` class is a concurrency error under Swift 6, and
     /// `UserDefaults` is cheap to ask for and shared behind the scenes anyway.
-    static var suite: UserDefaults { UserDefaults(suiteName: domain) ?? .standard }
+    public static var suite: UserDefaults { UserDefaults(suiteName: domain) ?? .standard }
 
     static let domain = "wtf.evan.monitor"
 
@@ -43,6 +43,33 @@ enum LayoutPreferencesStore {
     static func save(_ preferences: LayoutPreferences, to defaults: UserDefaults = suite) {
         guard let data = try? JSONEncoder().encode(preferences) else {
             log.error("Could not encode layout preferences")
+            return
+        }
+        defaults.set(data, forKey: key)
+    }
+}
+
+/// The sampling rates, kept beside the layout in the same domain.
+enum SamplingPreferencesStore {
+    static let key = "sampling.preferences"
+
+    static func load(from defaults: UserDefaults = LayoutPreferencesStore.suite)
+        -> SamplingPreferences
+    {
+        guard let data = defaults.data(forKey: key),
+              let stored = try? JSONDecoder().decode(SamplingPreferences.self, from: data)
+        else {
+            return .default
+        }
+        return stored
+    }
+
+    static func save(
+        _ preferences: SamplingPreferences,
+        to defaults: UserDefaults = LayoutPreferencesStore.suite
+    ) {
+        guard let data = try? JSONEncoder().encode(preferences) else {
+            log.error("Could not encode sampling preferences")
             return
         }
         defaults.set(data, forKey: key)

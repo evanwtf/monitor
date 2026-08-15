@@ -17,6 +17,20 @@ public protocol MetricSource: Sendable {
     /// Read once. Throw rather than return zeros: a failed read and an idle
     /// system must not look the same on a chart.
     func read(at timestamp: TimeInterval) throws -> SampleBatch
+
+    /// The shortest interval at which this source can produce a *new* value.
+    ///
+    /// Not a preference and not a cost limit — a fact about the hardware
+    /// underneath. Reading faster than this returns the previous value again,
+    /// so the sampler skips the call entirely.
+    ///
+    /// Zero, the default, means "as fast as you like": a counter read from
+    /// mach or IOKit is current whenever it is asked.
+    var minimumInterval: TimeInterval { get }
+}
+
+public extension MetricSource {
+    var minimumInterval: TimeInterval { 0 }
 }
 
 /// Why a source could not be used on this machine.

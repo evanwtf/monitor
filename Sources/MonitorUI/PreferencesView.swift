@@ -3,11 +3,11 @@ import SwiftUI
 
 /// The preferences window, opened with Cmd-, from the app menu.
 ///
-/// Tabbed, with one tab in it. That looks like overkill until the second tab
-/// arrives — a `TabView` added later moves every control down by the height of
-/// the tab bar, and a preferences window that changes shape between versions is
-/// one people have to re-learn. The frame is fixed for the same reason: a
-/// settings window is not a document window.
+/// Two tabs: what the panel draws, and how often it is read. The tab bar was
+/// there when there was only one, because a `TabView` added later moves every
+/// control down by its height, and a preferences window that changes shape
+/// between versions is one people have to re-learn. The frame is fixed for the
+/// same reason: a settings window is not a document window.
 public struct PreferencesView: View {
     @Bindable private var model: AppModel
 
@@ -19,6 +19,8 @@ public struct PreferencesView: View {
         TabView {
             LayoutTab(model: model)
                 .tabItem { Label("Layout", systemImage: "square.grid.2x2") }
+            SamplingTab(model: model)
+                .tabItem { Label("Sampling", systemImage: "timer") }
         }
         .frame(width: 460, height: 520)
     }
@@ -170,6 +172,70 @@ struct LayoutTab: View {
             Spacer()
         }
         .padding(16)
+    }
+}
+
+/// How often each kind of source is read.
+///
+/// Two rates rather than one, because the hardware underneath differs. Counters
+/// are current whenever they are asked, so their rate is a choice about detail.
+/// The SMC refreshes once a second, so anything faster reads the same number
+/// twice — which is why the sensor list starts at 1 s and steps in whole
+/// seconds, while the counters step in halves.
+struct SamplingTab: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Performance", selection: $model.sampling.performance) {
+                    ForEach(SamplingPreferences.performanceChoices, id: \.self) { seconds in
+                        Text(Format.interval(seconds)).tag(seconds)
+                    }
+                }
+            } footer: {
+                Text(
+                    "CPU, memory, disk and network. These are read straight from "
+                        + "the kernel and are current whenever they are asked, so "
+                        + "this is a choice about how much detail you want."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section {
+                Picker("Sensors", selection: $model.sampling.sensors) {
+                    ForEach(SamplingPreferences.sensorChoices, id: \.self) { seconds in
+                        Text(Format.interval(seconds)).tag(seconds)
+                    }
+                }
+                if !model.sampling.sensorIntervalIsExact {
+                    // Sensors ride the master clock, so the rate asked for is
+                    // not always the rate delivered. Saying which one is real
+                    // beats silently ignoring the setting.
+                    Text(
+                        "Actually every \(Format.interval(model.sampling.effectiveSensorInterval)) — "
+                            + "sensors are read on whole ticks of the "
+                            + "performance rate."
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            } footer: {
+                Text(
+                    "Temperature, fans and power. The SMC refreshes these once a "
+                        + "second, so 1 s is as fast as there is anything new to "
+                        + "read — and reading it costs about four times what "
+                        + "everything else costs put together."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 

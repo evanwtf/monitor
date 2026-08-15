@@ -52,5 +52,9 @@ let package = Package(
             name: "MonitorSourcesTests",
             dependencies: ["MonitorSources", "MonitorCore"]),
         .testTarget(name: "MonitorStoreTests", dependencies: ["MonitorStore", "MonitorCore"]),
+        // AppModel decides what the panel draws and which sources are read on
+        // a given tick. Both are arithmetic, and both are wrong in ways that
+        // look like a rendering glitch, so they are worth testing directly.
+        .testTarget(name: "MonitorUITests", dependencies: ["MonitorUI", "MonitorCore"]),
     ]
 )

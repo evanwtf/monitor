@@ -55,6 +55,19 @@ public enum Format {
         return String(format: "%.1f%@", value, unit)
     }
 
+    /// A sampling interval as a *setting*: "1 s", "1.5 s".
+    ///
+    /// Not `duration`, which formats a measurement and would render half a
+    /// second as "500.0 ms". A whole number gets no decimal point, because
+    /// "1.0 s" beside "1.5 s" reads as a reading rather than a choice; anything
+    /// else keeps its half, which `%.0f` would round away. A picker that offers
+    /// 1.5 s and then labels it 2 s is worse than one that does not offer it.
+    public static func interval(_ seconds: TimeInterval) -> String {
+        seconds == seconds.rounded()
+            ? String(format: "%.0f s", seconds)
+            : String(format: "%.1f s", seconds)
+    }
+
     public static func duration(_ seconds: Double) -> String {
         if seconds >= 1 { return String(format: "%.2f s", seconds) }
         if seconds >= 0.001 { return String(format: "%.1f ms", seconds * 1000) }
