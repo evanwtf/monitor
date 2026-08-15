@@ -143,6 +143,10 @@ are no component-level AGENTS.md files.
   `TC0P` feeds the same CPU metric as Apple silicon's `Tp01`. Everything it
   reads is unprivileged; root is needed only to *write* a key, which it cannot.
   `docs/sensors.md` is the survey of what a Mac exposes and what it costs.
+  **How many keys a family has is wildly model-dependent** — 84 GPU sensors and
+  23 CPU ones on a 16-inch MacBook Pro, none of it predictable from the model
+  name — so never hard-code a count or a list per model, and never sample a
+  subset of a family whose metric claims to be the hottest of it.
 - **The panel has two sections.** Performance above the rule, sensors below.
   The sensor section vanishes on a machine that reports none of it.
 - **Releasing is a merge, nothing else.** `release.yml` bumps

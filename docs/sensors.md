@@ -83,19 +83,44 @@ same CPU metric as Apple silicon's `Tp01`.
 
 | Metric | Keys | Notes |
 |--------|------|-------|
-| `sensor.temperature.cpu` | `Tp…`, `Te…`; Intel `TC0P`/`TC0D`/`TCXC` | hottest of up to six die sensors |
-| `sensor.temperature.gpu` | `Tg…`; Intel `TG0P`/`TG0D` | |
-| `sensor.temperature.storage` | `TH0…` | internal SSD |
-| `sensor.temperature.battery` | `TB…T` | |
+| `sensor.temperature.cpu` | `Tp…`, `Te…`; Intel `TC0P`/`TC0D`/`TCXC` | hottest die sensor |
+| `sensor.temperature.gpu` | `Tg…`; Intel `TG0P`/`TG0D` | hottest die sensor |
+| `sensor.temperature.storage` | `TH0…` | internal SSD, including the NAND sensor |
+| `sensor.temperature.battery` | `TB…T` | one metric per pack, hottest cell |
 | `sensor.temperature.enclosure` | `Ts…P` | the case, i.e. what your hands feel |
-| `sensor.temperature.ambient` | `TA…P` | absent on this machine |
+| `sensor.temperature.ambient` | `TA…P` | not published by every model |
 | `sensor.power.input` | `PDTR` | DC in |
 | `sensor.power.soc` | `PHPS` | package: CPU + GPU + memory |
-| `sensor.fan.N.speed` | `FNAc`, scaled by `FNMx` | absent on this machine |
+| `sensor.fan.N.speed` | `FNAc`, scaled by `FNMx` | fanless models publish none |
 
 Temperatures take the **hottest** of their sensors rather than the mean: the
 hot spot is what throttles the machine, and averaging fourteen die sensors
 hides the one that is about to.
+
+### How many keys is "their sensors"?
+
+Wildly model-dependent, and not predictable from the model name. A 16-inch
+MacBook Pro of 2026 publishes 568 readable keys, of which:
+
+| Family | Keys on that machine |
+|---|---|
+| GPU `Tg…` | 84 |
+| CPU `Tp…`/`Te…` | 23 |
+| SSD `TH0…` | 3 |
+| Battery `TB…T` | 3 |
+| Enclosure `Ts…P` | 2 |
+| Ambient `TA…P` | 0 |
+
+Another Mac will not match that table, which is the argument for discovering
+everything at launch rather than shipping a list per model. It is also why
+`hottest` must mean *all* of them: this source once read the first six of each
+family, so a machine with 23 die sensors reported the hottest of an arbitrary
+six and called it the hottest. On this machine that understated the CPU by
+three degrees.
+
+Reading them all costs about 0.15 ms per key, so a tick of this source runs
+around 15 ms here against 4 ms when it sampled six. That is the price of the
+metric meaning what it says.
 
 Charts are pinned to 0–110 °C rather than auto-scaled, for the same reason CPU
 load is pinned to 0–100%: a chart scaled to 2 °C of drift makes a cool machine
