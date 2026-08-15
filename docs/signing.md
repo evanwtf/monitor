@@ -1,5 +1,10 @@
 # Signing and notarization
 
+**Setting this up from nothing, here or for another app?**
+[developer-id-runbook.md](developer-id-runbook.md) is the procedure, with the
+parts that cost time called out. This document is the shorter one: what this
+repository does with the result.
+
 A local build is signed ad-hoc and that is correct. An ad-hoc signature keeps
 the app's identity stable across rebuilds, so macOS does not forget what it
 remembered about it, and costs nothing.
