@@ -26,7 +26,15 @@ a different distribution lane and will not do, however valid they are.
 
 Create it at [developer.apple.com](https://developer.apple.com/account/resources/certificates)
 → Certificates → **Developer ID Application**. It needs the Account Holder role
-on the team, and it is an interactive, one-time job.
+on the team, and it is an interactive, one-time job. No App ID has to be
+registered: a Developer ID app is distributed outside the store, so
+`wtf.evan.monitor` needs nothing declared to Apple.
+
+The certificate expires with the membership rather than five years out, and
+that matters less than it looks. A build signed *and notarized* while the
+certificate was valid keeps working after it expires, because the secure
+timestamp proves when it was signed. Expiry stops new signing, not old
+downloads.
 
 ## One-time setup on the Mac runner
 
@@ -35,11 +43,22 @@ The credentials live in that machine's keychain rather than in GitHub secrets:
 it is a Mac on a desk, not a disposable VM, so there is no reason to put a
 private key where it can leak.
 
-**1. Install the certificate.** Export it from your keychain as a `.p12` and
-import it on the runner, or create it there in the first place. Confirm:
+**1. Install the certificate.** The identity travels as a `.p12` — the
+certificate and its private key together. Restore it from 1Password
+(`monitor-devid-p12` in Code Secrets, password and file on the same item) and
+import it:
 
 ```sh
+security import monitor-devid.p12 -k login.keychain-db -T /usr/bin/codesign
 security find-identity -v -p codesigning | grep "Developer ID Application"
+```
+
+If the key was generated with `openssl` rather than Keychain Access it is a
+loose PEM, and the two halves import separately just as well:
+
+```sh
+security import developerID_application.cer -k login.keychain-db
+security import monitor-devid.key -k login.keychain-db -T /usr/bin/codesign
 ```
 
 **2. Let a non-interactive session use the key.** A login keychain will
@@ -64,9 +83,18 @@ xcrun notarytool store-credentials monitor-notary \
     --apple-id you@example.com --team-id <TEAMID> --password <app-specific>
 ```
 
-Keep the app-specific password in 1Password as well — `monitor-notary-password`
-in Code Secrets — because the profile on the runner is not readable back out and
-rebuilding that Mac would otherwise mean generating a new one.
+The password is an **app-specific** one from
+[appleid.apple.com](https://appleid.apple.com/account/manage), not the Apple ID
+password, which `notarytool` refuses. Keep it in 1Password as
+`monitor-notary-password` in Code Secrets: the profile on the runner cannot be
+read back out, so rebuilding that Mac would otherwise mean generating a new one.
+
+Check it took, which costs nothing and answers a question that is otherwise
+twenty minutes away:
+
+```sh
+xcrun notarytool history --keychain-profile monitor-notary
+```
 
 **4. Turn it on.** Two repository *variables* — not secrets, since both are only
 names:
@@ -116,7 +144,16 @@ spctl --assess --type execute -vv .build/monitor.app   # accepted, Notarized Dev
 
 `spctl` is the one that answers the question a downloader is really asking. It
 reads the staple rather than calling Apple, so it passes with the network off —
-which is exactly the difference stapling buys.
+which is exactly the difference stapling buys. Its two verdicts are worth
+recognising:
+
+```
+rejected   source=Unnotarized Developer ID   signed, ticket missing
+accepted   source=Notarized Developer ID     what a release should say
+```
+
+Notarization is queue time, not work: expect a few minutes, and do not be
+alarmed by twenty. `notarytool history` says whether it is still In Progress.
 
 ## When notarization is rejected
 

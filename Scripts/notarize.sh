@@ -34,8 +34,14 @@ profile="${MONITOR_NOTARY_PROFILE:-}"
 
 # A bundle signed ad-hoc is refused by the notary service with a message that
 # does not say so. Catching it here costs one command and a minute of waiting.
-if ! codesign --verify --strict --deep "$app" 2>/dev/null \
-    || ! codesign -dv "$app" 2>&1 | grep -q '^Authority=Developer ID Application'; then
+# Two traps in one line, both of which reported a correctly signed bundle as
+# unsigned. `-dv` prints no Authority lines at all — that needs `-dvv`. And
+# `grep -q` exits on the first match, which SIGPIPEs codesign, which under
+# `set -o pipefail` fails the whole pipeline. Hence a capture and a test.
+authority="$(codesign -dvv "$app" 2>&1 \
+    | grep '^Authority=Developer ID Application' || true)"
+
+if ! codesign --verify --strict --deep "$app" 2>/dev/null || [ -z "$authority" ]; then
     echo "error: $app is not signed with a Developer ID Application identity" >&2
     echo "       notarization would be rejected; see docs/signing.md" >&2
     exit 1
