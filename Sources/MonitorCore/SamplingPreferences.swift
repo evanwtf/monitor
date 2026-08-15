@@ -18,12 +18,21 @@ public struct SamplingPreferences: Codable, Equatable, Sendable {
     /// sensors are sampled on it rather than on a second timer of their own.
     public var sensors: TimeInterval
 
-    public static let performanceChoices: [TimeInterval] = [0.25, 0.5, 1, 2]
+    /// Half a second to five, in half seconds.
+    ///
+    /// The floor is half a second because that is where the gauges stop
+    /// stepping visibly: the needle animation can smooth a gap but cannot
+    /// invent detail that was never sampled.
+    public static let performanceChoices: [TimeInterval] =
+        stride(from: 0.5, through: 5.0, by: 0.5).map(\.self)
 
-    /// 10 s is absent on purpose. At that interval a die that climbed 20 °C
-    /// between two readings shows as a straight line between them, and the
-    /// chart says the machine warmed gently when it did not.
-    public static let sensorChoices: [TimeInterval] = [1, 2, 5]
+    /// One second to five, in seconds.
+    ///
+    /// One is the floor because the SMC refreshes at 1 Hz and anything faster
+    /// re-reads the same bits. Five is the ceiling because past it a die that
+    /// climbed 20 °C between readings draws as a straight line, and the chart
+    /// then says the machine warmed gently when it did not.
+    public static let sensorChoices: [TimeInterval] = [1, 2, 3, 4, 5]
 
     public static let `default` = SamplingPreferences(performance: 0.5, sensors: 1)
 
@@ -34,12 +43,21 @@ public struct SamplingPreferences: Codable, Equatable, Sendable {
 
     /// What the sensors are actually read at.
     ///
-    /// Sensors ride the master clock, so their interval is rounded up to a
-    /// whole number of ticks. Asking for 1 s while the master runs at 2 s gets
-    /// 2 s — the slower of the two wins, and the panel says so rather than
-    /// claiming a rate it cannot deliver.
+    /// Sensors ride the master clock, so their interval can only be a whole
+    /// number of ticks. Two things follow, and the panel spells both out rather
+    /// than showing a rate it does not honour:
+    ///
+    ///  - Asking for 1 s while the master runs at 2 s gets 2 s. Sensors cannot
+    ///    be read more often than the clock they ride.
+    ///  - Asking for 2 s while the master runs at 1.5 s gets 1.5 s, because 2
+    ///    is not a multiple of 1.5 and one tick is nearer than two.
     public var effectiveSensorInterval: TimeInterval {
         performance * Double(sensorTickDivisor)
+    }
+
+    /// Whether the rate asked for is the rate delivered.
+    public var sensorIntervalIsExact: Bool {
+        abs(effectiveSensorInterval - sensors) < 0.001
     }
 
     /// How many master ticks pass between sensor reads. Always at least one.

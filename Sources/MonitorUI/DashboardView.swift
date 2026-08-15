@@ -247,11 +247,17 @@ public struct DashboardView: View {
             .pickerStyle(.segmented)
         }
         ToolbarItem {
-            Picker("Rate", selection: $model.interval) {
-                Text("0.25 s").tag(TimeInterval(0.25))
-                Text("0.5 s").tag(TimeInterval(0.5))
-                Text("1 s").tag(TimeInterval(1))
-                Text("2 s").tag(TimeInterval(2))
+            // The same list preferences offers, not a second one. A rate set
+            // here and a rate set there are one setting, and a toolbar that
+            // offered 0.25 s while the Sampling tab did not would show an empty
+            // picker in preferences whenever it was chosen.
+            //
+            // The sensor rate is deliberately not here: it is set once and left
+            // alone, while this one gets changed while you are watching.
+            Picker("Rate", selection: $model.sampling.performance) {
+                ForEach(SamplingPreferences.performanceChoices, id: \.self) { seconds in
+                    Text(Format.interval(seconds)).tag(seconds)
+                }
             }
         }
     }

@@ -9,8 +9,40 @@ struct SamplingPreferencesTests {
         #expect(SamplingPreferences(performance: 0.5, sensors: 1).sensorTickDivisor == 2)
         #expect(SamplingPreferences(performance: 0.5, sensors: 2).sensorTickDivisor == 4)
         #expect(SamplingPreferences(performance: 0.5, sensors: 5).sensorTickDivisor == 10)
-        #expect(SamplingPreferences(performance: 0.25, sensors: 1).sensorTickDivisor == 4)
         #expect(SamplingPreferences(performance: 1, sensors: 1).sensorTickDivisor == 1)
+        #expect(SamplingPreferences(performance: 1, sensors: 3).sensorTickDivisor == 3)
+    }
+
+    /// Every pair the pickers can produce has to land somewhere sane. With
+    /// halves on one side and whole seconds on the other, most pairs do not
+    /// divide evenly.
+    @Test("every offered combination gives a usable interval")
+    func everyCombination() {
+        for performance in SamplingPreferences.performanceChoices {
+            for sensors in SamplingPreferences.sensorChoices {
+                let preferences = SamplingPreferences(
+                    performance: performance, sensors: sensors
+                )
+                #expect(preferences.sensorTickDivisor >= 1)
+                // Never faster than the SMC can refresh, and never faster than
+                // the clock it rides.
+                #expect(preferences.effectiveSensorInterval >= performance)
+                #expect(preferences.effectiveSensorInterval >= 0.5)
+            }
+        }
+    }
+
+    /// 2 s is not a multiple of 1.5 s, so it cannot be delivered exactly. One
+    /// tick is nearer than two, and the panel says which it actually got.
+    @Test("a rate that is not a whole number of ticks reports what it got")
+    func inexactRate() {
+        let preferences = SamplingPreferences(performance: 1.5, sensors: 2)
+        #expect(preferences.sensorTickDivisor == 1)
+        #expect(preferences.effectiveSensorInterval == 1.5)
+        #expect(!preferences.sensorIntervalIsExact)
+
+        let exact = SamplingPreferences(performance: 0.5, sensors: 2)
+        #expect(exact.sensorIntervalIsExact)
     }
 
     /// The slower of the two wins. Sensors are sampled on the master clock, so
@@ -26,7 +58,22 @@ struct SamplingPreferencesTests {
     @Test("the effective interval is what the divisor actually produces")
     func effective() {
         #expect(SamplingPreferences(performance: 0.5, sensors: 2).effectiveSensorInterval == 2)
-        #expect(SamplingPreferences(performance: 0.25, sensors: 5).effectiveSensorInterval == 5)
+        #expect(SamplingPreferences(performance: 1, sensors: 4).effectiveSensorInterval == 4)
+    }
+
+    @Test("the pickers offer what was asked for")
+    func choices() {
+        #expect(SamplingPreferences.performanceChoices.first == 0.5)
+        #expect(SamplingPreferences.performanceChoices.last == 5)
+        #expect(SamplingPreferences.performanceChoices.count == 10)
+        #expect(SamplingPreferences.sensorChoices == [1, 2, 3, 4, 5])
+        // The default has to be selectable, or the picker opens showing nothing.
+        #expect(SamplingPreferences.performanceChoices.contains(
+            SamplingPreferences.default.performance
+        ))
+        #expect(SamplingPreferences.sensorChoices.contains(
+            SamplingPreferences.default.sensors
+        ))
     }
 
     /// A zero would divide by zero on the way to a tick count.
