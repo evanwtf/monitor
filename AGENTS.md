@@ -51,6 +51,7 @@ swift run monitorctl watch --json --count 5        # machine-readable, bounded
 swiftformat Sources Tests --lint --cache ignore    # CI lint gate
 Scripts/make-app.sh [dest]       # wrap the release binary in monitor.app
 Scripts/make-icon.swift out.icns # draw the app icon (make-app.sh calls this)
+Scripts/notarize.sh app zip      # notarize a Developer ID build and staple it
 ```
 
 `monitorctl` exists because sampling is the part most likely to be wrong and the
@@ -75,8 +76,9 @@ Sources/
                    linked into the app — see "Guardrails" below.
   monitor/         the app target (@main SwiftUI App) and its AppDelegate
   monitorctl/      headless CLI harness
-Scripts/           make-app.sh, which builds monitor.app, and make-icon.swift,
-                   which draws its icon
+Scripts/           make-app.sh, which builds monitor.app, make-icon.swift,
+                   which draws its icon, and notarize.sh, which notarizes and
+                   staples a Developer ID build
 Tests/             MonitorCoreTests, MonitorSourcesTests, MonitorStoreTests
 docs/              README.md is the index
 .github/workflows/
@@ -159,6 +161,14 @@ are no component-level AGENTS.md files.
   - **Two escape hatches:** a pull request that sets `MonitorVersion.string`
     itself ships exactly that version, and a release published by hand from the
     GitHub UI gets its zip the same way.
+- **Signing is off until two repository variables are set.** `SIGN_IDENTITY`
+  and `NOTARY_PROFILE` turn on Developer ID signing and notarization in
+  `package.yml`; unset, a release is ad-hoc signed exactly as before. Set,
+  failing to sign or notarize fails the release rather than publishing a zip
+  nobody can open. The credentials live in the Mac runner's keychain, not in
+  GitHub secrets. **`notarize.sh` rebuilds the zip after stapling** — `stapler`
+  writes into the bundle, not the archive, so the uploaded copy is unstapled
+  until it is made again. `docs/signing.md` is the setup.
 - **The version lives in `MonitorCore/Version.swift`.** The About panel reads
   it at runtime and `make-app.sh` greps that file when it writes `Info.plist`,
   so a bundled build and `swift run monitor` cannot claim different versions.

@@ -148,11 +148,10 @@ jobs:
           echo "Releasing v$next ($level bump from $current)" \
               >> "$GITHUB_STEP_SUMMARY"
 
-      # The app is signed ad-hoc, not with a Developer ID, and it is not
-      # notarized. macOS quarantines anything a browser downloads, so without
-      # these two sentences a first launch is a dialog saying the app is
-      # damaged. The honest explanation belongs on the download page, not in an
-      # issue somebody files a week later.
+      # What the notes say about the first launch depends on whether the build
+      # is notarized, and NOTARY_PROFILE is what decides that (see package.yml).
+      # Telling people to right-click an app that opens perfectly well teaches
+      # them to do it to everything, which is worse than saying nothing.
       - name: Create release
         if: steps.check.outputs.tag != ''
         env:
@@ -162,12 +161,17 @@ jobs:
           # code that carries this version number, or `monitor.app` reports the
           # one before it.
           SHA: ${{ steps.check.outputs.sha }}
+          NOTARIZED: ${{ vars.NOTARY_PROFILE != '' }}
         run: |
           command -v gh >/dev/null 2>&1 \
               || { echo "gh is not installed on this runner" >&2; exit 1; }
           cat > notes.md <<'NOTES'
           Download the zip below, unzip it, and drag `monitor.app` to
           Applications. macOS 14 or later, Apple silicon or Intel.
+          NOTES
+
+          if [ "$NOTARIZED" != "true" ]; then
+            cat >> notes.md <<'NOTES'
 
           **First launch:** the app is not signed with a Developer ID and not
           notarized, so macOS blocks it. Right-click the app and choose Open,
@@ -179,6 +183,7 @@ jobs:
 
           Building it yourself avoids all of that — `Scripts/make-app.sh`.
           NOTES
+          fi
 
           gh release create "$TAG" \
               --target "$SHA" \

@@ -10,6 +10,8 @@ The index. Each file below is the reference for one part of the app.
 | [sensors.md](sensors.md) | What a Mac exposes about heat, fans and power, what it costs to read, and what needs root |
 | [ui.md](ui.md) | Gauges vs charts, the auto-ranging dial, and the rules that keep a chart honest |
 | [storage.md](storage.md) | Why v1 writes nothing to disk, and the SSD-endurance arithmetic for when it does |
+| [signing.md](signing.md) | What this repository does with a Developer ID: the scripts, the two variables, and the setup on the Mac runner |
+| [developer-id-runbook.md](developer-id-runbook.md) | Signing and notarizing a Mac app from nothing, app-agnostic, with the stumbling blocks that cost time |
 | [roadmap.md](roadmap.md) | What is deliberately not in v1, in the order it is likely to arrive |
 
 ## Quick start
