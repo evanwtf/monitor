@@ -80,6 +80,29 @@ If the runner runs as a LaunchDaemon it has no login keychain at all. Run it as
 a LaunchAgent under your user, or give it a dedicated keychain and unlock that
 in the job.
 
+**A LaunchAgent is not enough on its own.** GitHub's `svc.sh` writes
+`SessionCreate = true` into the runner's plist, which spawns every job into its
+own security session. That session does not inherit the login session's
+unlocked keychain, so `codesign` finds the identity, fails to reach its private
+key, and reports `errSecInternalComponent` — an error that says nothing about
+keychains. Turn it off and reload:
+
+```sh
+p=~/Library/LaunchAgents/actions.runner.<org>.<runner>.plist
+cp "$p" "$p.bak"
+/usr/libexec/PlistBuddy -c "Set :SessionCreate false" "$p"
+launchctl bootout gui/$(id -u)/actions.runner.<org>.<runner>
+launchctl bootstrap gui/$(id -u) "$p"
+```
+
+The job then runs in the console user's session and signs against the keychain
+unlocked at login. The alternative is to keep the separate session and unlock a
+keychain inside the job, which means putting its password in a GitHub secret —
+the thing keeping the credentials on the runner was meant to avoid.
+
+This needs somebody logged in at the console on that Mac. A runner that signs
+is a runner that is not headless.
+
 **3. Store notarization credentials.** An app-specific password from
 appleid.apple.com, kept in a named profile:
 

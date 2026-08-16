@@ -258,6 +258,21 @@ security set-key-partition-list -S apple-tool:,apple:,codesign: \
     -s -k <keychain-password> login.keychain-db
 ```
 
+**`errSecInternalComponent` means the key is unreachable, not missing.** This
+is the one that costs an afternoon, because the message names nothing useful
+and the identity is right there in `security find-identity`. On a GitHub
+self-hosted runner the usual cause is `SessionCreate = true` in the LaunchAgent
+plist that `svc.sh` installs: it spawns each job into its own security session,
+which does not inherit the unlocked login keychain. Set it to `false`, then
+`launchctl bootout` and `bootstrap` the agent. A signing runner also needs
+somebody logged in at the console — it cannot be headless.
+
+**An SSH session does not inherit the GUI keychain unlock either.** Setting the
+machine up remotely, every `security` and `notarytool` command needs an
+explicit `security unlock-keychain` first, even though the same keychain is
+unlocked for the user sitting in front of it. That is a property of the setup
+session and says nothing about whether the build will work.
+
 **The certificate expires with the membership**, not five years out. This
 matters less than it looks: a build signed *and notarized* while the certificate
 was valid keeps working afterwards, because the secure timestamp proves when it
