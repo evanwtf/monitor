@@ -179,7 +179,11 @@ are no component-level AGENTS.md files.
   `package.yml`; unset, a release is ad-hoc signed exactly as before. Set,
   failing to sign or notarize fails the release rather than publishing a zip
   nobody can open. The credentials live in the Mac runner's keychain, not in
-  GitHub secrets. **`notarize.sh` rebuilds the zip after stapling** — `stapler`
+  GitHub secrets — which is why the runner's LaunchAgent needs
+  `SessionCreate = false`: with the default `true`, every job gets its own
+  security session, cannot reach the login keychain, and `codesign` fails with
+  `errSecInternalComponent`. A signing runner cannot be headless.
+  **`notarize.sh` rebuilds the zip after stapling** — `stapler`
   writes into the bundle, not the archive, so the uploaded copy is unstapled
   until it is made again. `docs/signing.md` is the setup.
 - **The version lives in `MonitorCore/Version.swift`.** The About panel reads
