@@ -26,16 +26,49 @@ enum PanelTile: Codable, Equatable, Hashable, Sendable {
 }
 
 extension PanelTile: Transferable {
-    /// Carried as JSON on a private type rather than as plain text, so the
-    /// panel neither accepts a string dragged in from another app nor offers
-    /// its internals to one.
+    /// Carried as text in a private format, and parsed strictly.
+    ///
+    /// A custom `UTType` would say what this is far better, and it was the
+    /// first attempt — but `UTType(exportedAs:)` needs a declaration in an
+    /// `Info.plist`, and `swift run monitor` has no bundle. The type went
+    /// unregistered, no drop destination ever matched it, and dragging did
+    /// nothing at all in exactly the build the development loop uses. A type
+    /// that only works when packaged is a type that gets broken between
+    /// packages.
+    ///
+    /// So: text, with a prefix nothing else produces. Foreign text dropped on
+    /// the panel fails to parse and the move is refused, which is the property
+    /// the custom type was there for.
     static var transferRepresentation: some TransferRepresentation {
-        CodableRepresentation(contentType: .monitorPanelTile)
+        ProxyRepresentation(exporting: \.encoded, importing: PanelTile.init(encoded:))
     }
-}
 
-extension UTType {
-    static let monitorPanelTile = UTType(exportedAs: "wtf.evan.monitor.panel-tile")
+    private static let prefix = "wtf.evan.monitor.tile"
+
+    var encoded: String {
+        switch self {
+        case let .gauge(id): "\(Self.prefix)/gauge/\(id)"
+        case let .chart(group): "\(Self.prefix)/chart/\(group)"
+        }
+    }
+
+    /// Splits on the first two separators only, so a group name containing one
+    /// survives the round trip.
+    init(encoded: String) throws {
+        let parts = encoded.split(
+            separator: "/",
+            maxSplits: 2,
+            omittingEmptySubsequences: false
+        )
+        guard parts.count == 3, parts[0] == Self.prefix, !parts[2].isEmpty else {
+            throw MetricSourceError.readFailed("drag payload", code: 0)
+        }
+        switch parts[1] {
+        case "gauge": self = .gauge(String(parts[2]))
+        case "chart": self = .chart(String(parts[2]))
+        default: throw MetricSourceError.readFailed("drag payload", code: 0)
+        }
+    }
 }
 
 /// Where an insertion indicator is showing, and for which tile.
@@ -111,6 +144,10 @@ private struct ReorderableTile: ViewModifier {
     @Binding var target: DropTarget?
     let onDrop: (PanelTile, PanelTile, DropTarget.Edge) -> Void
 
+    /// The tile's own width, so a drop can be told which half it landed in.
+    /// Measured from the background, which is not hit-testable — see below.
+    @State private var width = 0.0
+
     func body(content: Content) -> some View {
         content
             .draggable(tile) {
@@ -125,12 +162,30 @@ private struct ReorderableTile: ViewModifier {
                     )
                     .frame(width: 120, height: 60)
             }
-            .overlay {
-                HStack(spacing: 0) {
-                    dropHalf(.leading)
-                    dropHalf(.trailing)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { width = proxy.size.width }
+                        .onChange(of: proxy.size.width) { _, new in width = new }
                 }
-            }
+            )
+            // One drop destination over the whole tile, with the half worked
+            // out from where the pointer is.
+            //
+            // The two halves were two `Color.clear` overlays with
+            // `contentShape(Rectangle())` before, and that is a trap worth
+            // remembering: an overlay sits *above* the content, so it swallowed
+            // the mouse-down and `.draggable` never saw a press. Nothing could
+            // be dragged at all. A drop destination does not need to be a hit
+            // target for ordinary clicks — a drag session hit-tests separately
+            // — so measuring the width from the background and asking the drop
+            // where it is costs nothing and leaves the press alone.
+            .onDrop(
+                of: [.utf8PlainText],
+                delegate: TileDrop(
+                    tile: tile, width: { width }, target: $target, onDrop: onDrop
+                )
+            )
             .overlay {
                 InsertionIndicator(
                     isShowing: target?.tile == tile && target?.edge == .leading,
@@ -142,21 +197,50 @@ private struct ReorderableTile: ViewModifier {
                 )
             }
     }
+}
 
-    private func dropHalf(_ edge: DropTarget.Edge) -> some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .dropDestination(for: PanelTile.self) { items, _ in
-                guard let dragged = items.first else { return false }
-                target = nil
-                onDrop(dragged, tile, edge)
-                return true
-            } isTargeted: { isTargeted in
-                if isTargeted {
-                    target = DropTarget(tile: tile, edge: edge)
-                } else if target?.tile == tile, target?.edge == edge {
-                    target = nil
-                }
-            }
+/// Tracks which half of a tile the pointer is over, and resolves the drop.
+private struct TileDrop: DropDelegate {
+    let tile: PanelTile
+    /// Read at drop time rather than captured, because the delegate is rebuilt
+    /// on every body pass and the width is measured after the first one.
+    let width: () -> Double
+    @Binding var target: DropTarget?
+    let onDrop: (PanelTile, PanelTile, DropTarget.Edge) -> Void
+
+    private func edge(_ info: DropInfo) -> DropTarget.Edge {
+        let half = width() / 2
+        // Before the width is known, treat everything as the leading half:
+        // "insert before this tile" is the safe reading, and it is only ever
+        // the case for the first frame of the very first drag.
+        guard half > 0 else { return .leading }
+        return info.location.x < half ? .leading : .trailing
+    }
+
+    func dropEntered(info: DropInfo) {
+        target = DropTarget(tile: tile, edge: edge(info))
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        target = DropTarget(tile: tile, edge: edge(info))
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info _: DropInfo) {
+        if target?.tile == tile { target = nil }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let provider = info.itemProviders(for: [.utf8PlainText]).first
+        else { return false }
+        let edge = edge(info)
+        target = nil
+        // Loading is asynchronous even for a drag that never left this process,
+        // so the move happens a beat after the drop rather than inside it.
+        _ = provider.loadTransferable(type: PanelTile.self) { result in
+            guard case let .success(dragged) = result else { return }
+            Task { @MainActor in onDrop(dragged, tile, edge) }
+        }
+        return true
     }
 }

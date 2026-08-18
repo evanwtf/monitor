@@ -70,14 +70,36 @@ Drag a dial along the wall, or a chart card around the grid, to reorder it.
   one. Whole-tile targets leave the last position in a row unreachable, because
   there is nothing after it to drop before.
 - **A dial and a card are different things**, and a drop target refuses the
-  wrong one. `PanelTile` carries which, as a private drag type — the panel
-  neither accepts text dragged in from another app nor offers its internals to
-  one.
+  wrong one. `PanelTile` carries which, encoded as text behind a private prefix
+  and parsed strictly, so foreign text dropped on the panel fails to parse and
+  the move is refused.
 
 The insertion line is an overlay on the neighbouring tile rather than a real
 item in the grid. A placeholder item would reflow everything after it on every
 frame of the drag, which is the panel rearranging itself under the pointer
-before anything has been dropped.
+before anything has been dropped. It is `allowsHitTesting(false)`, and that
+matters — see below.
+
+### Two traps this walked into
+
+Both broke dragging completely while every test stayed green, so they are
+written down rather than left to be rediscovered.
+
+**A drop target must not be an overlay with a content shape.** The first version
+put two `Color.clear` halves in an `.overlay` with `contentShape(Rectangle())`,
+one per side, to tell leading from trailing. An overlay sits *above* the
+content, so it swallowed the mouse-down and `.draggable` never saw a press —
+nothing could be dragged at all. There is now one `DropDelegate` over the whole
+tile that asks `DropInfo.location` which half it is in, and the width comes from
+a background `GeometryReader`, which is not hit-testable.
+
+**A custom `UTType` needs an `Info.plist` declaration, and `swift run monitor`
+has no bundle.** The first version carried the payload as a private type via
+`UTType(exportedAs:)`. Unbundled, the type went unregistered, no drop
+destination ever matched it, and dragging did nothing in exactly the build the
+development loop uses. A type that only works when packaged is a type that gets
+broken between packages. The payload is plain text now, behind a prefix nothing
+else produces.
 
 ### The rule between the sections
 

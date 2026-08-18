@@ -136,6 +136,8 @@ are no component-level AGENTS.md files.
   rather than swap, the drop target is half a tile so the last position in a row
   is reachable, and a card can be dragged across the section rule — the
   performance/sensor split is a default, not a rule about what belongs where.
+  The drag payload is plain text behind a private prefix, **not** a custom
+  `UTType` — see Troubleshooting for why.
   The sensor section is drawn whenever the machine has sensors *at all* rather
   than when it holds a card, so dragging the last one out does not remove the
   target needed to drag it back.
@@ -316,6 +318,19 @@ are no component-level AGENTS.md files.
 
 ## Troubleshooting
 
+- **Nothing on the panel can be dragged at all**: something hit-testable is
+  sitting above the tile. A drop target must not be an `.overlay` with a
+  `contentShape` — an overlay is above the content, so it swallows the
+  mouse-down and `.draggable` never sees a press. `ReorderDrag` uses one
+  `DropDelegate` over the tile and reads `DropInfo.location` to tell the halves
+  apart; the width comes from a background `GeometryReader`, which is not
+  hit-testable.
+- **Dragging works in `monitor.app` but not in `swift run monitor`**: something
+  in the drag payload needs an `Info.plist`, and the development build has no
+  bundle. This is why the payload is plain text behind a private prefix rather
+  than a custom `UTType(exportedAs:)` — that route silently matched no drop
+  destination at all when unbundled. Verify drags with `swift run`, not only
+  with a packaged build.
 - **A rate metric shows nothing on the first tick**: correct by design. Counters
   need two readings. `monitorctl read` takes two ticks for this reason.
 - **The window opens behind other apps, or the app is missing from Cmd-Tab**:
