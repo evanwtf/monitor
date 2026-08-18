@@ -255,6 +255,18 @@ public final class AppModel {
         }
     }
 
+    /// Whether this machine reports anything that belongs below the rule.
+    ///
+    /// Asked of the *descriptors*, not of what the sensor section currently
+    /// holds, so the answer does not change when somebody drags the last sensor
+    /// card up into performance. A fanless, sensorless machine draws no section;
+    /// every other machine keeps one, empty or not, as somewhere to drop a card
+    /// back into.
+    public var hasSensors: Bool {
+        let sensors = Set(LayoutDefaults.sensorGroupOrder)
+        return descriptors.values.contains { sensors.contains($0.group) }
+    }
+
     /// Chart cards above the section rule.
     ///
     /// A group nothing draws by default — "Disk Ops", "Network Packets",

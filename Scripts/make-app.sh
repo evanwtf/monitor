@@ -95,6 +95,26 @@ cat > "$app/Contents/Info.plist" <<PLIST
     <!-- The window is designed against a dark ground; see Theme. -->
     <key>NSRequiresAquaSystemAppearance</key>
     <false/>
+    <!--
+      The drag type used to reorder tiles on the panel (see ReorderDrag.swift).
+      Declared so the system knows it rather than warning about an undeclared
+      identifier. It is deliberately a private type: the panel neither accepts
+      text dragged in from another app nor offers its internals to one, so it
+      has no filename extension and no MIME type.
+    -->
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+      <dict>
+        <key>UTTypeIdentifier</key>
+        <string>wtf.evan.monitor.panel-tile</string>
+        <key>UTTypeDescription</key>
+        <string>Monitor panel tile</string>
+        <key>UTTypeConformsTo</key>
+        <array>
+          <string>public.data</string>
+        </array>
+      </dict>
+    </array>
 </dict>
 </plist>
 PLIST

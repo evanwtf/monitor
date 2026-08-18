@@ -22,6 +22,9 @@ public struct DashboardView: View {
     @State private var wallWidth = 0.0
     /// Whether the toolbar's size popover is showing.
     @State private var showsSizes = false
+    /// Which gap is currently showing an insertion line, if any. One value for
+    /// the whole panel: exactly one gap can be the target at a time.
+    @State private var dropTarget: DropTarget?
 
     /// Edge length of one dial, and so the height of the gauge wall.
     ///
@@ -53,15 +56,25 @@ public struct DashboardView: View {
                     gaugeWall
                     resizeHandle
                 }
-                charts(model.performanceGroups)
+                charts(model.performanceGroups, in: .performance)
                 // Sensors are a different question from performance. What the
                 // machine is doing and how hot it is getting are read at
                 // different moments and for different reasons, and mixing them
                 // into one grid means hunting for the temperature card among
                 // the throughput ones.
-                if !model.sensorGroups.isEmpty {
+                //
+                // Drawn whenever this machine has sensors *at all*, not only
+                // when the section currently holds a card. Drag the last one up
+                // and the section has to stay, or there is no target left to
+                // drag it back to. A machine that reports no sensors still
+                // shows nothing.
+                if model.hasSensors {
                     sectionRule
-                    charts(model.sensorGroups)
+                    if model.sensorGroups.isEmpty {
+                        emptySensorSection
+                    } else {
+                        charts(model.sensorGroups, in: .sensors)
+                    }
                 }
             }
             .padding(Theme.Layout.pagePadding)
@@ -133,6 +146,9 @@ public struct DashboardView: View {
                             .foregroundStyle(Theme.label)
                             .lineLimit(1)
                     }
+                    .reorderable(
+                        .gauge(metric.rawValue), target: $dropTarget, onDrop: dropGauge
+                    )
                 }
             }
         }
@@ -234,7 +250,10 @@ public struct DashboardView: View {
             .padding(.vertical, 2)
     }
 
-    private func charts(_ groups: [(name: String, metrics: [MetricID])]) -> some View {
+    private func charts(
+        _ groups: [(name: String, metrics: [MetricID])],
+        in section: PanelArrangement.ChartSection
+    ) -> some View {
         LazyVGrid(
             columns: [GridItem(
                 .adaptive(minimum: model.arrangement.chartWidth),
@@ -253,8 +272,70 @@ public struct DashboardView: View {
                     isUnavailable: group.metrics.allSatisfy(model.unavailable.contains),
                     plotHeight: model.arrangement.chartHeight
                 )
+                .reorderable(.chart(group.name), target: $dropTarget) { dragged, on, edge in
+                    dropChart(dragged, on: on, edge: edge, in: section)
+                }
             }
         }
+    }
+
+    /// What is left of the sensor section once every card has been dragged out
+    /// of it: a place to drop one back.
+    private var emptySensorSection: some View {
+        RoundedRectangle(cornerRadius: Theme.Layout.cardCorner)
+            .strokeBorder(
+                Theme.panelEdge, style: StrokeStyle(lineWidth: 1, dash: [4, 4])
+            )
+            .frame(height: 44)
+            .overlay(
+                Text("Drag a card here")
+                    .font(.system(size: Theme.Layout.cardLegend))
+                    .foregroundStyle(Theme.label)
+            )
+            .dropDestination(for: PanelTile.self) { items, _ in
+                guard let group = items.first?.chart else { return false }
+                model.arrangement.moveGroup(group, to: .sensors)
+                model.commitArrangement()
+                return true
+            }
+    }
+
+    // MARK: - Drops
+
+    /// Turns "the half of a tile that was hit" into the neighbour the model's
+    /// move wants. Trailing means before whatever comes next, which is the end
+    /// of the list when nothing does.
+    static func neighbour<T: Equatable>(
+        after target: T, in order: [T], edge: DropTarget.Edge
+    ) -> T? {
+        guard edge == .trailing else { return target }
+        guard let index = order.firstIndex(of: target) else { return nil }
+        let next = order.index(after: index)
+        return next < order.endIndex ? order[next] : nil
+    }
+
+    private func dropGauge(_ dragged: PanelTile, on target: PanelTile, edge: DropTarget.Edge) {
+        // A chart card dropped on the gauge wall is not a move anybody can make
+        // sense of, so it is refused rather than guessed at.
+        guard let moved = dragged.gauge, let onto = target.gauge else { return }
+        let order = gaugeMetrics
+        model.arrangement.moveGauge(
+            moved, before: Self.neighbour(after: onto, in: order, edge: edge)
+        )
+        model.commitArrangement()
+    }
+
+    private func dropChart(
+        _ dragged: PanelTile, on target: PanelTile, edge: DropTarget.Edge,
+        in section: PanelArrangement.ChartSection
+    ) {
+        guard let moved = dragged.chart, let onto = target.chart else { return }
+        let order = model.arrangement.groupOrder(in: section)
+        model.arrangement.moveGroup(
+            moved, to: section,
+            before: Self.neighbour(after: onto, in: order, edge: edge)
+        )
+        model.commitArrangement()
     }
 
     // MARK: - Toolbar
