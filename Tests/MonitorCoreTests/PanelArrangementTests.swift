@@ -166,7 +166,8 @@ struct PanelArrangementTests {
         #expect(reloaded.section(of: "Temperature") == .performance)
         #expect(reloaded.groupOrder(in: .sensors).isEmpty)
         // And exactly one card, not one on each side.
-        #expect(reloaded.groupOrder(in: .performance).filter { $0 == "Temperature" }.count == 1)
+        let cards = reloaded.groupOrder(in: .performance).count { $0 == "Temperature" }
+        #expect(cards == 1)
     }
 
     @Test("Several new metrics keep their default order rather than arriving reversed")
