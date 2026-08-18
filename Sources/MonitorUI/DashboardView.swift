@@ -13,13 +13,6 @@ public struct DashboardView: View {
     /// Seconds of history in the charts.
     @State private var window: TimeInterval = 120
 
-    /// Edge length of one dial, and so the height of the gauge wall.
-    ///
-    /// The dial is square and the wall is one row, so this single number is what
-    /// the drag handle moves: pull the rule down by 40 points and the dials get
-    /// 40 points taller, which is what makes the handle appear to follow the
-    /// pointer rather than to drive something.
-    @State private var gaugeSize = Theme.Layout.gaugeDefault
     /// Size when the current drag began, so the gesture reads as an absolute
     /// offset. Accumulating deltas instead would let a drag past the limit build
     /// up credit that has to be dragged back off before the dial moves again.
@@ -27,6 +20,24 @@ public struct DashboardView: View {
     /// Width available to the wall, which is what really limits how big a dial
     /// can get before the row wraps.
     @State private var wallWidth = 0.0
+    /// Whether the toolbar's size popover is showing.
+    @State private var showsSizes = false
+
+    /// Edge length of one dial, and so the height of the gauge wall.
+    ///
+    /// The dial is square and the wall is one row, so this single number is
+    /// what both the drag handle and the popover's first slider move: pull the
+    /// rule down by 40 points and the dials get 40 points taller, which is what
+    /// makes the handle appear to follow the pointer rather than to drive
+    /// something.
+    ///
+    /// It lives on the model rather than in `@State` so it survives a relaunch.
+    /// The write does not happen here: the setter only updates the model, and
+    /// whoever ends the gesture calls `commitArrangement`.
+    private var gaugeSize: Double {
+        get { model.arrangement.gaugeSize }
+        nonmutating set { model.arrangement.gaugeSize = newValue }
+    }
 
     public init(model: AppModel = AppModel()) {
         _model = State(initialValue: model)
@@ -134,7 +145,14 @@ public struct DashboardView: View {
             wallWidth = width
             // A window narrowed under the current dials has to shrink them, or
             // the row wraps and the wall silently doubles in height.
-            gaugeSize = clamped(gaugeSize)
+            //
+            // Deliberately not committed. Narrowing the window is not a request
+            // to keep smaller dials forever, so the chosen size stays stored and
+            // comes back when there is room for it again. The guard matters as
+            // well: assigning during a layout pass invalidates the layout, and
+            // an unguarded write would do that on every pass.
+            let fitted = clamped(gaugeSize)
+            if fitted != gaugeSize { gaugeSize = fitted }
         }
     }
 
@@ -169,7 +187,11 @@ public struct DashboardView: View {
                         dragOrigin = origin
                         gaugeSize = clamped(origin + drag.translation.height)
                     }
-                    .onEnded { _ in dragOrigin = nil }
+                    .onEnded { _ in
+                        dragOrigin = nil
+                        // Once, here, rather than on every frame of the drag.
+                        model.commitArrangement()
+                    }
             )
             .accessibilityElement()
             .accessibilityLabel("Gauge size")
@@ -180,6 +202,8 @@ public struct DashboardView: View {
                 case .decrement: gaugeSize = clamped(gaugeSize - 20)
                 @unknown default: break
                 }
+                // A discrete step is a whole gesture, unlike a frame of a drag.
+                model.commitArrangement()
             }
     }
 
@@ -213,7 +237,8 @@ public struct DashboardView: View {
     private func charts(_ groups: [(name: String, metrics: [MetricID])]) -> some View {
         LazyVGrid(
             columns: [GridItem(
-                .adaptive(minimum: Theme.Layout.chartMinimum), spacing: Theme.Layout.gridSpacing
+                .adaptive(minimum: model.arrangement.chartWidth),
+                spacing: Theme.Layout.gridSpacing
             )],
             spacing: Theme.Layout.gridSpacing
         ) {
@@ -225,7 +250,8 @@ public struct DashboardView: View {
                         return (descriptor: descriptor, points: model.points(metric))
                     },
                     window: window,
-                    isUnavailable: group.metrics.allSatisfy(model.unavailable.contains)
+                    isUnavailable: group.metrics.allSatisfy(model.unavailable.contains),
+                    plotHeight: model.arrangement.chartHeight
                 )
             }
         }
@@ -245,6 +271,17 @@ public struct DashboardView: View {
                 Text("10 min").tag(TimeInterval(600))
             }
             .pickerStyle(.segmented)
+        }
+        ToolbarItem {
+            Button {
+                showsSizes.toggle()
+            } label: {
+                Label("Size", systemImage: "square.resize")
+            }
+            .help("Resize the gauges and charts")
+            .popover(isPresented: $showsSizes, arrowEdge: .bottom) {
+                SizePopover(model: model, gaugeCeiling: gaugeCeiling)
+            }
         }
         ToolbarItem {
             // The same list preferences offers, not a second one. A rate set

@@ -1,3 +1,4 @@
+import MonitorCore
 import SwiftUI
 
 /// The instrument-panel palette.
@@ -28,26 +29,24 @@ public enum Theme {
     /// same place — a literal half-of-both left five cramped columns, wrapped
     /// legends, colliding time labels and a third of the window empty.
     public enum Layout {
-        /// Gauge dials are square, so this is their height too.
-        ///
-        /// The wall is resizable — the rule under it is a drag handle — so these
-        /// are the ends of that travel rather than a fixed size. The floor is
-        /// where the readout stops being legible; the ceiling is a sanity limit,
-        /// and on any window narrower than four ceiling-sized dials the real
-        /// limit is the width, computed by `DashboardView`.
-        public static let gaugeMinimum = 90.0
-        public static let gaugeMaximum = 360.0
-        /// Where the wall starts, and what it had been fixed at before it could
-        /// be dragged.
-        public static let gaugeDefault = 130.0
+        // The three resizable sizes are stored in `PanelArrangement`, so their
+        // bounds live beside it in `MonitorCore` — a stored size has to be
+        // clamped by the value type that holds it, and bounds the type cannot
+        // see are bounds it cannot enforce. These forward, so views still read
+        // one place. They are ends of travel now rather than fixed sizes: the
+        // current size comes from the model.
+        public static let gaugeMinimum = PanelSize.gauge.minimum
+        public static let gaugeMaximum = PanelSize.gauge.maximum
+        /// Where the wall starts, before anybody moves the slider.
+        public static let gaugeDefault = PanelSize.gauge.initial
         /// Height of the drag handle's hit area. The rule it draws is one point;
         /// this is how close the pointer has to get, and 11 is the smallest that
         /// does not feel like a game of darts.
         public static let dividerGrab = 11.0
-        /// Minimum chart card width. The grid fits as many columns as it can,
-        /// so this is really a column count in disguise: 260 gives four columns
-        /// at 1180pt and three at 900.
-        public static let chartMinimum = 260.0
+        /// Where the card width starts. The grid fits as many columns as it
+        /// can, so this is really a column count in disguise: 260 gives four
+        /// columns at 1180pt and three at 900.
+        public static let chartMinimum = PanelSize.chartWidth.initial
         /// The plot area alone, not counting the card's header and padding.
         ///
         /// Half what it was, because the panel now has two sections rather than
@@ -55,7 +54,7 @@ public enum Theme {
         /// height the sensor cards were always below the fold, and a chart you
         /// have to scroll to reach is a chart you stop looking at. It is still a
         /// *minimum*, so a shorter window scrolls rather than squeezing.
-        public static let chartMinHeight = 125.0
+        public static let chartMinHeight = PanelSize.chartHeight.initial
 
         public static let gridSpacing = 12.0
         public static let pagePadding = 14.0
