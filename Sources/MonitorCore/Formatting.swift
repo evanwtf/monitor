@@ -211,6 +211,30 @@ public enum Format {
         }
     }
 
+    /// The unit a value is *stored* in, for an export rather than a display.
+    ///
+    /// Not `unitLabel`. That one answers "what goes under the needle", and the
+    /// answer there is pinned: disk always reads MB/s and network always reads
+    /// Mbit/s, whatever the magnitude. The buffer holds neither — it holds
+    /// bytes per second and bits per second, and a percentage is a fraction
+    /// between zero and one. A CSV column headed "MB/s" carrying bytes is the
+    /// quiet kind of wrong this whole file exists to prevent.
+    public static func baseUnit(_ unit: MetricUnit) -> String {
+        switch unit {
+        case .fraction: "fraction"
+        case .bytes: "B"
+        case .bytesPerSecond: "B/s"
+        case .bitsPerSecond: "bit/s"
+        case .operationsPerSecond: "op/s"
+        case .count: "count"
+        case .hertz: "Hz"
+        case .celsius: "°C"
+        case .watts: "W"
+        case .rpm: "rpm"
+        case .seconds: "s"
+        }
+    }
+
     /// Just the number part, for a gauge readout whose unit is drawn separately.
     public static func magnitude(_ value: Double, unit: MetricUnit) -> String {
         switch unit {

@@ -64,17 +64,17 @@ look at it in the app.
 Sources/
   MonitorCore/     metric model, ring buffer, downsampling, gauge auto-ranging,
                    seven-segment digit mapping, formatting, the sampling clock,
-                   the layout, arrangement and sampling preference models. No
-                   macOS APIs — so all of it is testable without a machine to
-                   read.
+                   the layout, arrangement and sampling preference models,
+                   CSV export. No macOS APIs — so all of it is testable
+                   without a machine to read.
   MonitorSources/  the readers: CPU, memory, disk, network, GPU, SMC sensors
                    (temperature, fans, power), and the registry that lists them.
                    One file per source, plus SMC.swift for the SMC transport.
   MonitorUI/       Theme (palette + Layout density), GaugeView, SevenSegmentText,
                    ChartCard, FlowLayout, DashboardView, PreferencesView,
                    SizePopover, ReorderDrag (drag-to-reorder for both grids),
-                   AppModel, LayoutPreferencesStore (layout, sampling,
-                   arrangement)
+                   CardExport (right-click to copy a card), AppModel,
+                   LayoutPreferencesStore (layout, sampling, arrangement)
   MonitorStore/    SQLite history and retention. Designed and tested but NOT
                    linked into the app — see "Guardrails" below.
   monitor/         the app target (@main SwiftUI App) and its AppDelegate
@@ -148,6 +148,18 @@ are no component-level AGENTS.md files.
   freely during a gesture, then call `commitArrangement()`. Adding a `didSet`
   that saves would turn one decision into hundreds of writes — the thing
   `docs/storage.md` exists to prevent.
+- **A card can be copied, and the copy is not what the panel shows.**
+  Right-click any tile for **Copy Image** (the tile rendered on its own with
+  `ImageRenderer`, not captured from the window) and **Copy Data** (the visible
+  window as CSV). `CSVExport` lives in `MonitorCore` so the row alignment and
+  the units are testable. Two rules: the export is cut to the window the card is
+  *drawing*, not the whole ten-minute buffer; and it carries **base units** —
+  `Format.baseUnit`, not `Format.unitLabel`. The panel pins disk to MB/s and
+  network to Mbit/s so the unit under a needle cannot move while you read it,
+  but the buffer holds bytes and bits, and a column headed `MB/s` carrying bytes
+  is the quiet kind of wrong. A series that missed a tick leaves an **empty
+  field, never a zero** — same reason a failed source greys a card out instead
+  of drawing a flat line.
 - **The layout is chosen per metric, in preferences.** Cmd-, opens a tabbed
   window. Its **Layout** tab lists every metric with a Gauge checkbox and a
   Chart checkbox, grouped into collapsible sections whose headings carry the

@@ -121,34 +121,18 @@ public struct DashboardView: View {
         ) {
             ForEach(gaugeMetrics, id: \.self) { metric in
                 if let descriptor = model.descriptor(metric) {
-                    VStack(spacing: 2) {
-                        GaugeView(
-                            title: gaugeTitle(descriptor),
-                            value: model.latest(metric),
-                            fullScale: model.scales[metric]?.fullScale ?? 1,
-                            peak: model.scales[metric]?.peak,
-                            unit: descriptor.unit,
-                            // Needle travel matches the sampling interval, so
-                            // it is still moving when the next sample arrives.
-                            travelTime: model.interval
+                    let dial = gaugeTile(metric, descriptor)
+                    dial
+                        .copyable {
+                            CSVExport.text(
+                                for: [(descriptor, model.points(metric))], window: window
+                            )
+                        } rendered: {
+                            copyBackground(dial.frame(width: gaugeSize))
+                        }
+                        .reorderable(
+                            .gauge(metric.rawValue), target: $dropTarget, onDrop: dropGauge
                         )
-                        // The dial's label, not its value. The readout on the
-                        // face already carries the number and its unit, so
-                        // repeating it here was the only thing under the dial
-                        // — and the label had to come off the face, where at
-                        // 130pt across "Network Out" ran into the ticks.
-                        Text(gaugeTitle(descriptor).uppercased())
-                            .font(.system(
-                                size: Theme.Layout.gaugeCaptionSize(forGauge: gaugeSize),
-                                weight: .medium,
-                                design: .rounded
-                            ))
-                            .foregroundStyle(Theme.label)
-                            .lineLimit(1)
-                    }
-                    .reorderable(
-                        .gauge(metric.rawValue), target: $dropTarget, onDrop: dropGauge
-                    )
                 }
             }
         }
@@ -232,6 +216,38 @@ public struct DashboardView: View {
         }
     }
 
+    /// One dial and its caption.
+    ///
+    /// A function rather than written inline because the copy needs the same
+    /// picture a second time — the tile in the wall carries the drag machinery,
+    /// and the copy wants only the dial.
+    private func gaugeTile(_ metric: MetricID, _ descriptor: MetricDescriptor) -> some View {
+        VStack(spacing: 2) {
+            GaugeView(
+                title: gaugeTitle(descriptor),
+                value: model.latest(metric),
+                fullScale: model.scales[metric]?.fullScale ?? 1,
+                peak: model.scales[metric]?.peak,
+                unit: descriptor.unit,
+                // Needle travel matches the sampling interval, so it is still
+                // moving when the next sample arrives.
+                travelTime: model.interval
+            )
+            // The dial's label, not its value. The readout on the face already
+            // carries the number and its unit, so repeating it here was the
+            // only thing under the dial — and the label had to come off the
+            // face, where at 130pt across "Network Out" ran into the ticks.
+            Text(gaugeTitle(descriptor).uppercased())
+                .font(.system(
+                    size: Theme.Layout.gaugeCaptionSize(forGauge: gaugeSize),
+                    weight: .medium,
+                    design: .rounded
+                ))
+                .foregroundStyle(Theme.label)
+                .lineLimit(1)
+        }
+    }
+
     /// "Disk" + "Read" reads better on a dial as "Disk Read" than as either
     /// alone, since two dials on the wall both say "Read".
     private func gaugeTitle(_ descriptor: MetricDescriptor) -> String {
@@ -262,21 +278,51 @@ public struct DashboardView: View {
             spacing: Theme.Layout.gridSpacing
         ) {
             ForEach(groups, id: \.name) { group in
-                ChartCard(
+                // Read once and used three times — the card, its copied
+                // picture and its copied numbers. Reading again for each would
+                // let a tick land in between and hand back a CSV that does not
+                // match the chart it came from.
+                let series = series(of: group)
+                let card = ChartCard(
                     title: group.name,
-                    series: group.metrics.compactMap { metric in
-                        guard let descriptor = model.descriptor(metric) else { return nil }
-                        return (descriptor: descriptor, points: model.points(metric))
-                    },
+                    series: series,
                     window: window,
                     isUnavailable: group.metrics.allSatisfy(model.unavailable.contains),
                     plotHeight: model.arrangement.chartHeight
                 )
-                .reorderable(.chart(group.name), target: $dropTarget) { dragged, on, edge in
-                    dropChart(dragged, on: on, edge: edge, in: section)
-                }
+                card
+                    .copyable {
+                        CSVExport.text(for: series, window: window)
+                    } rendered: {
+                        copyBackground(card.frame(width: model.arrangement.chartWidth))
+                    }
+                    .reorderable(.chart(group.name), target: $dropTarget) { dragged, on, edge in
+                        dropChart(dragged, on: on, edge: edge, in: section)
+                    }
             }
         }
+    }
+
+    /// The series behind one card, in the order the card draws them.
+    private func series(
+        of group: (name: String, metrics: [MetricID])
+    ) -> [(descriptor: MetricDescriptor, points: [Sample])] {
+        group.metrics.compactMap { metric in
+            guard let descriptor = model.descriptor(metric) else { return nil }
+            return (descriptor: descriptor, points: model.points(metric))
+        }
+    }
+
+    /// What a copied tile sits on.
+    ///
+    /// The panel's own background rather than nothing. A card copied
+    /// transparent arrives legible on a white document and invisible on a dark
+    /// one, and a gauge draws no background at all, so the needle would land on
+    /// whatever the reader happened to paste it into.
+    private func copyBackground(_ tile: some View) -> some View {
+        tile
+            .padding(Theme.Layout.pagePadding)
+            .background(Theme.background)
     }
 
     /// What is left of the sensor section once every card has been dragged out

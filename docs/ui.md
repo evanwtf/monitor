@@ -173,6 +173,66 @@ not — the app still writes no *history* to disk and still does not link
 `MonitorStore`. The argument in `storage.md` is about a sample every half second
 forever, not about a checkbox written when somebody ticks it.
 
+## Copying a card
+
+Right-click any tile — a chart card or a dial — for two items.
+
+**Copy Image** puts the tile on the pasteboard as a PNG. It is rendered on its
+own with `ImageRenderer` rather than captured from the window, so what you get
+is the card and nothing around it: no insertion indicator left over from a drag,
+no slice of the panel behind it. The scale is the screen's own, or a copy of a
+Retina card arrives looking like a photograph of one. It is padded and drawn on
+the panel background, because a dial draws no background of its own and a
+transparent needle lands invisible in half the places you would paste it.
+
+**Copy Data** puts the samples behind the card on the pasteboard as CSV. Two
+rules shape it, both in `CSVExport` in `MonitorCore` — the interesting part is
+the row alignment and the choice of units, and neither needs a window to test.
+
+### Copy what the picture showed
+
+The buffer holds ten minutes and a card usually shows one or two. The export is
+cut to the same window the chart is drawing, so the numbers and the picture
+agree. Copying the whole buffer would hand back data that was never on screen.
+
+### Copy what was stored, not what was drawn
+
+The panel pins disk to MB/s and network to Mbit/s, because the unit under a
+needle must not change while you are reading it. A spreadsheet has no needle,
+and a divided number is a number somebody has to undo. So the CSV carries what
+the buffer holds — bytes per second, bits per second, and a fraction between
+zero and one — and the header names the unit:
+
+```
+Time,Disk Read (B/s),Disk Write (B/s)
+2026-08-18T14:32:10-04:00,5000000.0000,120000.0000
+```
+
+`Format.baseUnit` is that table, and it is deliberately *not* `Format.unitLabel`
+beside it. A column headed `MB/s` carrying bytes is the quiet kind of wrong the
+whole formatting file exists to prevent.
+
+One row per timestamp, oldest first, with every series on it. A series that
+missed a tick leaves its field **empty rather than zero** — a skipped source is
+not a source reading zero, and a spreadsheet that cannot tell them apart draws
+exactly the lie the panel refuses to draw.
+
+Values are written with fixed decimals rather than Swift's shortest round-trip,
+which spells small numbers `1e-05` — a valid double, and text to some
+spreadsheets.
+
+### The gauge gets the same menu
+
+A dial shows one number, but the buffer behind it holds the same history a chart
+has, so **Copy Data** on a gauge gives that one metric over the same window.
+Every tile has the same two items; a menu that changed shape between tile types
+would be one more thing to remember.
+
+### Nothing is written to disk
+
+The pasteboard is somewhere the user asked for it to go, once, by choosing a
+menu item. `MonitorStore` stays unlinked and the ring buffer stays in memory.
+
 ## The auto-ranging dial
 
 A benchmark can pin its dial at a known maximum. A monitor cannot: disk write
