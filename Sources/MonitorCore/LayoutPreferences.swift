@@ -3,11 +3,19 @@ import Foundation
 /// What the panel draws when nobody has said otherwise.
 ///
 /// These lists were hard-coded in the dashboard before the layout could be
-/// chosen. They live here now because they are two different things at once:
-/// the starting state of a fresh preference set, and the order things appear
-/// in. Order matters as much as membership — a dial or a card that moves
-/// between launches is one you have to hunt for, so enabling a metric adds it
-/// to a fixed position rather than wherever the registry happened to yield it.
+/// chosen, and they were the panel's order until it could be dragged.
+///
+/// They are now the **seed** for that order, not the order itself:
+/// `PanelArrangement` holds where every tile actually sits, and reads these
+/// once to decide where a tile it has never seen belongs. Order still matters
+/// as much as membership — a dial that moves between launches is one you have
+/// to hunt for — which is why a metric switched on lands at a considered
+/// position rather than wherever the registry happened to yield it, and why a
+/// sensor that appears when you plug in a dock lands among its own kind rather
+/// than at the end.
+///
+/// Read these to answer "where does this go if nobody has said"; read
+/// `PanelArrangement` to answer "where is this".
 public enum LayoutDefaults {
     /// The dials on the wall, left to right.
     ///

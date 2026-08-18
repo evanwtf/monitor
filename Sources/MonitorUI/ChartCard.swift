@@ -13,17 +13,23 @@ public struct ChartCard: View {
     /// Seconds of history to show.
     public let window: TimeInterval
     public var isUnavailable: Bool = false
+    /// Height of the plot area, from the size popover. Still a *minimum*: a
+    /// card whose legend wraps to three lines grows rather than squeezing the
+    /// chart out of it.
+    public var plotHeight: Double = Theme.Layout.chartMinHeight
 
     public init(
         title: String,
         series: [(descriptor: MetricDescriptor, points: [Sample])],
         window: TimeInterval,
-        isUnavailable: Bool = false
+        isUnavailable: Bool = false,
+        plotHeight: Double = Theme.Layout.chartMinHeight
     ) {
         self.title = title
         self.series = series
         self.window = window
         self.isUnavailable = isUnavailable
+        self.plotHeight = plotHeight
     }
 
     public var body: some View {
@@ -146,7 +152,7 @@ public struct ChartCard: View {
         }
         .font(.system(size: Theme.Layout.cardLegend))
         .foregroundStyle(Theme.label)
-        .frame(maxWidth: .infinity, minHeight: Theme.Layout.chartMinHeight)
+        .frame(maxWidth: .infinity, minHeight: plotHeight)
     }
 
     /// Points inside the visible window, per series.
@@ -214,7 +220,7 @@ public struct ChartCard: View {
                     .foregroundStyle(Theme.label)
             }
         }
-        .frame(minHeight: Theme.Layout.chartMinHeight)
+        .frame(minHeight: plotHeight)
     }
 
     /// The visible time span, as raw timestamps.

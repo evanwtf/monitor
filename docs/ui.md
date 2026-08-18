@@ -47,12 +47,123 @@ looks exactly like one somebody switched off, and would be silently missing.
 `adoptingDefaults(for:)` gives an unseen metric its default and leaves every
 choice already made alone.
 
-Order is fixed, not derived. `LayoutDefaults.gaugeOrder` places the four dials
-the app opens with, and anything else ticked goes after them by metric id;
-`performanceGroupOrder` and `sensorGroupOrder` place the cards, with groups on
-neither list — `Disk Ops`, `Network Packets`, `Memory Paging` — landing after
-the named performance cards. A dial or a card that moves between launches is one
-you have to hunt for.
+## Arranging the panel
+
+Order used to be derived: the dashboard recomputed it from the `LayoutDefaults`
+constants on every access. Once a tile can be dragged, order is data, and
+`PanelArrangement` is where it lives — also in `MonitorCore`, also testable
+without a window.
+
+Keep the two apart. **`LayoutPreferences` is what is drawn. `PanelArrangement`
+is where it goes and how big it is.** Two structs and two preference keys, so a
+value this version cannot read costs one of them and not both.
+
+### Dragging
+
+Drag a dial along the wall, or a chart card around the grid, to reorder it.
+
+- **Insert-before, not swap.** For two adjacent tiles the two are the same
+  gesture. For anything further apart, swap flings an unrelated tile across the
+  panel into the space you just left, which is not what dragging something looks
+  like anywhere else.
+- **The drop target is half a tile.** The gap you are aiming at is the nearer
+  one. Whole-tile targets leave the last position in a row unreachable, because
+  there is nothing after it to drop before.
+- **A dial and a card are different things**, and a drop target refuses the
+  wrong one. `PanelTile` carries which, encoded as text behind a private prefix
+  and parsed strictly, so foreign text dropped on the panel fails to parse and
+  the move is refused.
+
+The insertion line is an overlay on the neighbouring tile rather than a real
+item in the grid. A placeholder item would reflow everything after it on every
+frame of the drag, which is the panel rearranging itself under the pointer
+before anything has been dropped. It is `allowsHitTesting(false)`, and that
+matters — see below.
+
+### Two traps this walked into
+
+Both broke dragging completely while every test stayed green, so they are
+written down rather than left to be rediscovered.
+
+**A drop target must not be an overlay with a content shape.** The first version
+put two `Color.clear` halves in an `.overlay` with `contentShape(Rectangle())`,
+one per side, to tell leading from trailing. An overlay sits *above* the
+content, so it swallowed the mouse-down and `.draggable` never saw a press —
+nothing could be dragged at all. There is now one `DropDelegate` over the whole
+tile that asks `DropInfo.location` which half it is in, and the width comes from
+a background `GeometryReader`, which is not hit-testable.
+
+**A custom `UTType` needs an `Info.plist` declaration, and `swift run monitor`
+has no bundle.** The first version carried the payload as a private type via
+`UTType(exportedAs:)`. Unbundled, the type went unregistered, no drop
+destination ever matched it, and dragging did nothing in exactly the build the
+development loop uses. A type that only works when packaged is a type that gets
+broken between packages. The payload is plain text now, behind a prefix nothing
+else produces.
+
+### The rule between the sections
+
+Cards can be dragged across it. The performance/sensor split keeps its defaults
+but stops being a rule about what belongs where: if the pairing you care about
+is CPU load beside CPU temperature, you can have it.
+
+The section is drawn whenever the machine has sensors **at all**, not when the
+section currently holds a card, and shows a drop zone when empty. Drag the last
+sensor card up and the section has to stay, or there is nothing left to drag it
+back to. A machine that reports no sensors still shows nothing.
+
+### Sizes
+
+The toolbar's Size button opens three sliders: gauges, chart width, chart
+height. In the toolbar rather than in preferences for the same reason the
+sampling rate is — you change it while watching, and judging a dial size in one
+window while dragging a slider in another is guesswork.
+
+**Gauges are one number**, because the dial is square. **Charts are two**: a
+wide short card and a tall narrow one answer different questions, and neither is
+a scaled copy of the other. The rule under the gauge wall is still a drag handle
+and drives the same number as the first slider.
+
+The bounds live in `PanelSize` in `MonitorCore` rather than in `Theme.Layout`,
+because a stored size has to be clamped by the value type that holds it, and
+bounds the type cannot see are bounds it cannot enforce. `Theme.Layout` forwards
+to them, so views still read one place.
+
+### What is written, and when
+
+**Every gesture writes once, when it ends.** A slider dragged across its travel
+fires on every frame, and a drag crosses several drop targets on the way to the
+one it wants; persisting each change turns one decision into hundreds of writes.
+So `AppModel.arrangement` deliberately has no saving `didSet`, unlike `layout`
+beside it — a checkbox changes once when it is clicked, a drag does not. Mutate
+it freely during a gesture and call `commitArrangement()` at the end.
+
+Narrowing the window still shrinks the dials, so the row cannot wrap and
+silently double the height of the wall. That is not committed: it is not a
+request to keep smaller dials forever, so the chosen size comes back when there
+is room for it.
+
+### Where new things land
+
+`LayoutDefaults` is the seed for the order rather than the order itself.
+`adoptingDefaults(for:)` gives anything the arrangement has not seen a position
+and moves nothing that already has one, so a sensor that appears when you plug
+in a dock lands among its own kind rather than at the end.
+
+It needs no `known` set, unlike `LayoutPreferences`. In a set of what is
+switched on, "off" and "never heard of" are both absence; in a list of
+positions, **not being in the list is what unknown means**.
+
+Entries for metrics the machine no longer reports are kept. They draw nothing,
+because the panel only draws what it has a descriptor for, and an external GPU
+that comes back finds its old place waiting.
+
+A dial switched off keeps its position too, so switching it back on returns it
+to where it was rather than appending it to the end of the row.
+
+`AppModel.groupOrder` feeds the preferences list, so it reads the arrangement as
+well. The list and the window it configures have to agree about where things
+are; leaving that one on the `LayoutDefaults` constants is how this breaks.
 
 The choices are written to `UserDefaults` under `wtf.evan.monitor`, named
 explicitly rather than taken from `.standard`: `swift run monitor` has no

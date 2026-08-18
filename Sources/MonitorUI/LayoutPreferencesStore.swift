@@ -75,3 +75,44 @@ enum SamplingPreferencesStore {
         defaults.set(data, forKey: key)
     }
 }
+
+/// Where the arrangement is kept: the same domain, its own key.
+///
+/// Its own key rather than a field on the layout, because the two answer
+/// different questions — `LayoutPreferences` is what is drawn, `PanelArrangement`
+/// is where it sits and how big it is. Separate keys mean a value this version
+/// cannot read costs one of them and not both.
+///
+/// This is still the documented exception to "the app writes nothing to disk":
+/// a write when somebody moves a card or lets go of a slider, not a write every
+/// half second forever. **Save on gesture end, never during** — a slider dragged
+/// across its travel fires continuously, and persisting each change would turn
+/// one decision into a per-frame write.
+enum PanelArrangementStore {
+    static let key = "panel.arrangement"
+
+    /// A first launch, a corrupt value and a missing key all end up in the same
+    /// place: the defaults for whatever this machine reports.
+    static func load(
+        for descriptors: [MetricDescriptor],
+        from defaults: UserDefaults = LayoutPreferencesStore.suite
+    ) -> PanelArrangement {
+        guard let data = defaults.data(forKey: key),
+              let stored = try? JSONDecoder().decode(PanelArrangement.self, from: data)
+        else {
+            return PanelArrangement.defaults(for: descriptors)
+        }
+        return stored.adoptingDefaults(for: descriptors)
+    }
+
+    static func save(
+        _ arrangement: PanelArrangement,
+        to defaults: UserDefaults = LayoutPreferencesStore.suite
+    ) {
+        guard let data = try? JSONEncoder().encode(arrangement) else {
+            log.error("Could not encode panel arrangement")
+            return
+        }
+        defaults.set(data, forKey: key)
+    }
+}

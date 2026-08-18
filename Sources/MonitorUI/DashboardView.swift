@@ -13,13 +13,6 @@ public struct DashboardView: View {
     /// Seconds of history in the charts.
     @State private var window: TimeInterval = 120
 
-    /// Edge length of one dial, and so the height of the gauge wall.
-    ///
-    /// The dial is square and the wall is one row, so this single number is what
-    /// the drag handle moves: pull the rule down by 40 points and the dials get
-    /// 40 points taller, which is what makes the handle appear to follow the
-    /// pointer rather than to drive something.
-    @State private var gaugeSize = Theme.Layout.gaugeDefault
     /// Size when the current drag began, so the gesture reads as an absolute
     /// offset. Accumulating deltas instead would let a drag past the limit build
     /// up credit that has to be dragged back off before the dial moves again.
@@ -27,6 +20,27 @@ public struct DashboardView: View {
     /// Width available to the wall, which is what really limits how big a dial
     /// can get before the row wraps.
     @State private var wallWidth = 0.0
+    /// Whether the toolbar's size popover is showing.
+    @State private var showsSizes = false
+    /// Which gap is currently showing an insertion line, if any. One value for
+    /// the whole panel: exactly one gap can be the target at a time.
+    @State private var dropTarget: DropTarget?
+
+    /// Edge length of one dial, and so the height of the gauge wall.
+    ///
+    /// The dial is square and the wall is one row, so this single number is
+    /// what both the drag handle and the popover's first slider move: pull the
+    /// rule down by 40 points and the dials get 40 points taller, which is what
+    /// makes the handle appear to follow the pointer rather than to drive
+    /// something.
+    ///
+    /// It lives on the model rather than in `@State` so it survives a relaunch.
+    /// The write does not happen here: the setter only updates the model, and
+    /// whoever ends the gesture calls `commitArrangement`.
+    private var gaugeSize: Double {
+        get { model.arrangement.gaugeSize }
+        nonmutating set { model.arrangement.gaugeSize = newValue }
+    }
 
     public init(model: AppModel = AppModel()) {
         _model = State(initialValue: model)
@@ -42,15 +56,25 @@ public struct DashboardView: View {
                     gaugeWall
                     resizeHandle
                 }
-                charts(model.performanceGroups)
+                charts(model.performanceGroups, in: .performance)
                 // Sensors are a different question from performance. What the
                 // machine is doing and how hot it is getting are read at
                 // different moments and for different reasons, and mixing them
                 // into one grid means hunting for the temperature card among
                 // the throughput ones.
-                if !model.sensorGroups.isEmpty {
+                //
+                // Drawn whenever this machine has sensors *at all*, not only
+                // when the section currently holds a card. Drag the last one up
+                // and the section has to stay, or there is no target left to
+                // drag it back to. A machine that reports no sensors still
+                // shows nothing.
+                if model.hasSensors {
                     sectionRule
-                    charts(model.sensorGroups)
+                    if model.sensorGroups.isEmpty {
+                        emptySensorSection
+                    } else {
+                        charts(model.sensorGroups, in: .sensors)
+                    }
                 }
             }
             .padding(Theme.Layout.pagePadding)
@@ -122,6 +146,9 @@ public struct DashboardView: View {
                             .foregroundStyle(Theme.label)
                             .lineLimit(1)
                     }
+                    .reorderable(
+                        .gauge(metric.rawValue), target: $dropTarget, onDrop: dropGauge
+                    )
                 }
             }
         }
@@ -134,7 +161,14 @@ public struct DashboardView: View {
             wallWidth = width
             // A window narrowed under the current dials has to shrink them, or
             // the row wraps and the wall silently doubles in height.
-            gaugeSize = clamped(gaugeSize)
+            //
+            // Deliberately not committed. Narrowing the window is not a request
+            // to keep smaller dials forever, so the chosen size stays stored and
+            // comes back when there is room for it again. The guard matters as
+            // well: assigning during a layout pass invalidates the layout, and
+            // an unguarded write would do that on every pass.
+            let fitted = clamped(gaugeSize)
+            if fitted != gaugeSize { gaugeSize = fitted }
         }
     }
 
@@ -169,7 +203,11 @@ public struct DashboardView: View {
                         dragOrigin = origin
                         gaugeSize = clamped(origin + drag.translation.height)
                     }
-                    .onEnded { _ in dragOrigin = nil }
+                    .onEnded { _ in
+                        dragOrigin = nil
+                        // Once, here, rather than on every frame of the drag.
+                        model.commitArrangement()
+                    }
             )
             .accessibilityElement()
             .accessibilityLabel("Gauge size")
@@ -180,6 +218,8 @@ public struct DashboardView: View {
                 case .decrement: gaugeSize = clamped(gaugeSize - 20)
                 @unknown default: break
                 }
+                // A discrete step is a whole gesture, unlike a frame of a drag.
+                model.commitArrangement()
             }
     }
 
@@ -210,10 +250,14 @@ public struct DashboardView: View {
             .padding(.vertical, 2)
     }
 
-    private func charts(_ groups: [(name: String, metrics: [MetricID])]) -> some View {
+    private func charts(
+        _ groups: [(name: String, metrics: [MetricID])],
+        in section: PanelArrangement.ChartSection
+    ) -> some View {
         LazyVGrid(
             columns: [GridItem(
-                .adaptive(minimum: Theme.Layout.chartMinimum), spacing: Theme.Layout.gridSpacing
+                .adaptive(minimum: model.arrangement.chartWidth),
+                spacing: Theme.Layout.gridSpacing
             )],
             spacing: Theme.Layout.gridSpacing
         ) {
@@ -225,10 +269,73 @@ public struct DashboardView: View {
                         return (descriptor: descriptor, points: model.points(metric))
                     },
                     window: window,
-                    isUnavailable: group.metrics.allSatisfy(model.unavailable.contains)
+                    isUnavailable: group.metrics.allSatisfy(model.unavailable.contains),
+                    plotHeight: model.arrangement.chartHeight
                 )
+                .reorderable(.chart(group.name), target: $dropTarget) { dragged, on, edge in
+                    dropChart(dragged, on: on, edge: edge, in: section)
+                }
             }
         }
+    }
+
+    /// What is left of the sensor section once every card has been dragged out
+    /// of it: a place to drop one back.
+    private var emptySensorSection: some View {
+        RoundedRectangle(cornerRadius: Theme.Layout.cardCorner)
+            .strokeBorder(
+                Theme.panelEdge, style: StrokeStyle(lineWidth: 1, dash: [4, 4])
+            )
+            .frame(height: 44)
+            .overlay(
+                Text("Drag a card here")
+                    .font(.system(size: Theme.Layout.cardLegend))
+                    .foregroundStyle(Theme.label)
+            )
+            .dropDestination(for: PanelTile.self) { items, _ in
+                guard let group = items.first?.chart else { return false }
+                model.arrangement.moveGroup(group, to: .sensors)
+                model.commitArrangement()
+                return true
+            }
+    }
+
+    // MARK: - Drops
+
+    /// Turns "the half of a tile that was hit" into the neighbour the model's
+    /// move wants. Trailing means before whatever comes next, which is the end
+    /// of the list when nothing does.
+    static func neighbour<T: Equatable>(
+        after target: T, in order: [T], edge: DropTarget.Edge
+    ) -> T? {
+        guard edge == .trailing else { return target }
+        guard let index = order.firstIndex(of: target) else { return nil }
+        let next = order.index(after: index)
+        return next < order.endIndex ? order[next] : nil
+    }
+
+    private func dropGauge(_ dragged: PanelTile, on target: PanelTile, edge: DropTarget.Edge) {
+        // A chart card dropped on the gauge wall is not a move anybody can make
+        // sense of, so it is refused rather than guessed at.
+        guard let moved = dragged.gauge, let onto = target.gauge else { return }
+        let order = gaugeMetrics
+        model.arrangement.moveGauge(
+            moved, before: Self.neighbour(after: onto, in: order, edge: edge)
+        )
+        model.commitArrangement()
+    }
+
+    private func dropChart(
+        _ dragged: PanelTile, on target: PanelTile, edge: DropTarget.Edge,
+        in section: PanelArrangement.ChartSection
+    ) {
+        guard let moved = dragged.chart, let onto = target.chart else { return }
+        let order = model.arrangement.groupOrder(in: section)
+        model.arrangement.moveGroup(
+            moved, to: section,
+            before: Self.neighbour(after: onto, in: order, edge: edge)
+        )
+        model.commitArrangement()
     }
 
     // MARK: - Toolbar
@@ -245,6 +352,17 @@ public struct DashboardView: View {
                 Text("10 min").tag(TimeInterval(600))
             }
             .pickerStyle(.segmented)
+        }
+        ToolbarItem {
+            Button {
+                showsSizes.toggle()
+            } label: {
+                Label("Size", systemImage: "square.resize")
+            }
+            .help("Resize the gauges and charts")
+            .popover(isPresented: $showsSizes, arrowEdge: .bottom) {
+                SizePopover(model: model, gaugeCeiling: gaugeCeiling)
+            }
         }
         ToolbarItem {
             // The same list preferences offers, not a second one. A rate set
