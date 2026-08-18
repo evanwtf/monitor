@@ -30,6 +30,26 @@ public final class AppModel {
         }
     }
 
+    /// Where every tile sits and how big the tiles are.
+    ///
+    /// Separate from `layout` because the two answer different questions: that
+    /// one is what is drawn, this one is where it goes. Saved on every change
+    /// like the layout is — but the *callers* decide when a change happens.
+    /// A drag or a slider must call `commitArrangement` when the gesture ends
+    /// rather than assign on every frame; see `PanelArrangementStore`.
+    /// Deliberately without a `didSet` that saves, unlike `layout` beside it.
+    ///
+    /// A checkbox changes once when somebody clicks it, so saving on change is
+    /// right there. A drag and a slider change continuously while the gesture
+    /// is in flight, and the panel has to follow the pointer, so saving on
+    /// change would turn one decision into a write per frame — the thing the
+    /// endurance argument in `docs/storage.md` exists to prevent.
+    ///
+    /// So: mutate this freely during a gesture, and call `commitArrangement()`
+    /// when it ends. A mutation never committed is lost at the next launch,
+    /// which is the trade for not writing fifty times to move one dial.
+    public var arrangement: PanelArrangement
+
     /// Where preferences are read and written.
     ///
     /// Injected rather than reached for, so a test can build a model without
@@ -95,6 +115,7 @@ public final class AppModel {
         sampling = stored
         sampler = Sampler(sources: sources, sinks: [], interval: stored.performance)
         layout = LayoutPreferencesStore.load(for: all, from: defaults)
+        arrangement = PanelArrangementStore.load(for: all, from: defaults)
 
         // A scale for every metric, not only the ones a dial shows today. Any
         // metric can be given a dial in preferences, and auto-ranging needs
@@ -206,53 +227,48 @@ public final class AppModel {
 
     /// The dials on the wall, left to right.
     ///
-    /// `LayoutDefaults.gaugeOrder` first, so the four the app opens with never
-    /// move, then anything else that has been ticked, by metric id. Both halves
-    /// are fixed orders rather than registry order for the same reason: a dial
-    /// that moves between launches is a dial you stop glancing at.
+    /// Order comes from the arrangement, membership from the layout: the
+    /// arrangement holds a position for every metric, including the ones no
+    /// dial is drawn for, so switching one on returns it to where it was rather
+    /// than appending it to the end of the row.
     public var gaugeMetrics: [MetricID] {
-        let ordered = LayoutDefaults.gaugeOrder.filter {
+        arrangement.gaugeOrder.filter {
             descriptors[$0] != nil && layout.showsGauge($0)
         }
-        let rest = descriptors.keys
-            .filter { layout.showsGauge($0) && !LayoutDefaults.gaugeOrder.contains($0) }
-            .sorted { $0.rawValue < $1.rawValue }
-        return ordered + rest
     }
 
     /// Every group this machine reports, in the order the panel lays its cards
     /// out — which is the order the preferences list has to use as well, or the
     /// list and the window it configures disagree about where things are.
+    ///
+    /// So this reads the arrangement, exactly as the panel does. It was the
+    /// `LayoutDefaults` constants before anything could be dragged, and leaving
+    /// it that way is the way this breaks.
     public var groupOrder: [(name: String, metrics: [MetricID])] {
         let byName = Dictionary(
             groups().map { ($0.name, $0.metrics) }, uniquingKeysWith: { first, _ in first }
         )
-        let order = LayoutDefaults.performanceGroupOrder + extraGroupNames
-            + LayoutDefaults.sensorGroupOrder
+        let order = arrangement.groupOrder(in: .performance)
+            + arrangement.groupOrder(in: .sensors)
         return order.compactMap { name in
             byName[name].map { (name: name, metrics: $0) }
         }
     }
 
-    /// Groups nothing draws by default — "Disk Ops", "Network Packets",
-    /// "Memory Paging". They have to land somewhere once they are ticked, and
-    /// performance is what they are, so they go after the named performance
-    /// cards and before the section rule.
-    private var extraGroupNames: [String] {
-        let named = Set(
-            LayoutDefaults.performanceGroupOrder + LayoutDefaults.sensorGroupOrder
-        )
-        return groups().map(\.name).filter { !named.contains($0) }
-    }
-
     /// Chart cards above the section rule.
+    ///
+    /// A group nothing draws by default — "Disk Ops", "Network Packets",
+    /// "Memory Paging" — no longer needs special-casing into the gap before the
+    /// rule: `PanelArrangement.adoptingDefaults` gave it a position when it
+    /// first appeared, and this reads that.
     public var performanceGroups: [(name: String, metrics: [MetricID])] {
-        chartGroups(in: LayoutDefaults.performanceGroupOrder + extraGroupNames)
+        chartGroups(in: arrangement.groupOrder(in: .performance))
     }
 
-    /// Chart cards below the rule: temperature, fans, power.
+    /// Chart cards below the rule: temperature, fans, power by default, and
+    /// whatever has been dragged down there since.
     public var sensorGroups: [(name: String, metrics: [MetricID])] {
-        chartGroups(in: LayoutDefaults.sensorGroupOrder)
+        chartGroups(in: arrangement.groupOrder(in: .sensors))
     }
 
     /// Groups with at least one charted metric, in registry order. A group
@@ -300,9 +316,23 @@ public final class AppModel {
         }
     }
 
-    /// Puts every metric back to the layout the app ships with.
+    /// Puts every metric back to the layout the app ships with. Membership
+    /// only: where things sit and how big they are is `restoreDefaultArrangement`,
+    /// because "show me the default set of cards" and "put them back where they
+    /// started" are two different regrets.
     public func restoreDefaultLayout() {
         layout = LayoutPreferences.defaults(for: Array(descriptors.values))
+    }
+
+    /// Puts every tile back where it started, at the size it started.
+    public func restoreDefaultArrangement() {
+        arrangement = PanelArrangement.defaults(for: Array(descriptors.values))
+        commitArrangement()
+    }
+
+    /// Writes the arrangement out. Call this once, when a gesture ends.
+    public func commitArrangement() {
+        PanelArrangementStore.save(arrangement, to: defaults)
     }
 
     // MARK: - Gauge policy
