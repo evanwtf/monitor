@@ -64,14 +64,17 @@ look at it in the app.
 Sources/
   MonitorCore/     metric model, ring buffer, downsampling, gauge auto-ranging,
                    seven-segment digit mapping, formatting, the sampling clock,
-                   the layout and sampling preference models. No macOS APIs — so all of it is
-                   testable without a machine to read.
+                   the layout, arrangement and sampling preference models. No
+                   macOS APIs — so all of it is testable without a machine to
+                   read.
   MonitorSources/  the readers: CPU, memory, disk, network, GPU, SMC sensors
                    (temperature, fans, power), and the registry that lists them.
                    One file per source, plus SMC.swift for the SMC transport.
   MonitorUI/       Theme (palette + Layout density), GaugeView, SevenSegmentText,
                    ChartCard, FlowLayout, DashboardView, PreferencesView,
-                   AppModel, LayoutPreferencesStore (layout + sampling)
+                   SizePopover, ReorderDrag (drag-to-reorder for both grids),
+                   AppModel, LayoutPreferencesStore (layout, sampling,
+                   arrangement)
   MonitorStore/    SQLite history and retention. Designed and tested but NOT
                    linked into the app — see "Guardrails" below.
   monitor/         the app target (@main SwiftUI App) and its AppDelegate
@@ -124,6 +127,25 @@ are no component-level AGENTS.md files.
   this working right now against what it can do" (disk, network throughput). A
   chart answers "what has been happening" (CPU, memory). `LayoutDefaults`
   encodes the split — but as an opening position, not a rule.
+- **The panel is arranged by dragging, and stored.** `PanelArrangement` (in
+  `MonitorCore`) holds where every tile sits and how big tiles are; the order
+  used to be recomputed from `LayoutDefaults` on every access, and those
+  constants are now the **seed** for it rather than the order itself. Keep the
+  two apart: **`LayoutPreferences` is what is drawn, `PanelArrangement` is where
+  it goes.** Two structs, two preference keys. Reordering is insert-before
+  rather than swap, the drop target is half a tile so the last position in a row
+  is reachable, and a card can be dragged across the section rule — the
+  performance/sensor split is a default, not a rule about what belongs where.
+  The sensor section is drawn whenever the machine has sensors *at all* rather
+  than when it holds a card, so dragging the last one out does not remove the
+  target needed to drag it back.
+- **Every gesture writes once, when it ends.** `AppModel.arrangement`
+  deliberately has no saving `didSet`, unlike `layout` beside it: a checkbox
+  changes once when clicked, but a slider fires on every frame of a drag and a
+  drag crosses several drop targets on the way to the one it wants. Mutate it
+  freely during a gesture, then call `commitArrangement()`. Adding a `didSet`
+  that saves would turn one decision into hundreds of writes — the thing
+  `docs/storage.md` exists to prevent.
 - **The layout is chosen per metric, in preferences.** Cmd-, opens a tabbed
   window. Its **Layout** tab lists every metric with a Gauge checkbox and a
   Chart checkbox, grouped into collapsible sections whose headings carry the
@@ -212,7 +234,10 @@ are no component-level AGENTS.md files.
   mutable state between reads (previous ticks, a `RateTracker`, a cached
   interface list) and the sampler is the only caller.
 - Every layout constant lives in `Theme.Layout`, not in the views. Card size,
-  column count and density are one decision, not eight.
+  column count and density are one decision, not eight. The three *resizable*
+  sizes are the exception: their bounds are in `PanelSize` in `MonitorCore`,
+  because a stored size has to be clamped by the value type that holds it.
+  `Theme.Layout` forwards to them, so views still read one place.
 - Tests are one `@Suite` per area with `@Test` cases. `MonitorCoreTests` use
   fixed inputs; `MonitorSourcesTests` read this machine and assert shape and
   plausible range.
@@ -252,6 +277,9 @@ are no component-level AGENTS.md files.
   a refactor. Preferences are the exception that proves the rule: layout
   choices go to `UserDefaults` under `wtf.evan.monitor`, which is a write when
   somebody ticks a checkbox, not a write every half second forever.
+- **Never save the arrangement on change.** It is mutated on every frame of a
+  drag and every frame of a slider. Save when the gesture ends — see
+  `commitArrangement`.
 - Never report a fabricated value when a source fails. Throw
   `MetricSourceError` and let the UI say "not available". A plausible wrong
   number in a monitoring tool is worse than a gap, because nobody checks it.
