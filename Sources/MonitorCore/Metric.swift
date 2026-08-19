@@ -42,6 +42,27 @@ public enum MetricKind: String, Sendable, Codable {
     case counter
 }
 
+/// Which way a flow runs, for the metrics that are one direction of one.
+///
+/// Disk bytes read and written, network bits and packets in and out, pages in
+/// and out of memory. A metric with a direction has an opposite in its group,
+/// and the two are only meaningful against each other.
+///
+/// A fact about the metric, not about the picture: whether the pair is then
+/// *drawn* mirrored is a preference, and lives in `ChartPreferences`. Declaring
+/// it here means a source added later gets the option without anything else
+/// being told about it.
+///
+/// Most metrics have none. Read and write *latency* are the instructive case:
+/// two measurements of the same kind, not two directions of one flow, so
+/// neither carries a direction and their card never mirrors.
+public enum MetricDirection: String, Sendable, Codable {
+    /// Arriving: bytes read, packets in, pages in.
+    case inbound
+    /// Leaving: bytes written, packets out, pages out.
+    case outbound
+}
+
 /// Everything the UI needs to draw a series without knowing where it came from.
 public struct MetricDescriptor: Hashable, Sendable, Codable {
     public let id: MetricID
@@ -54,6 +75,9 @@ public struct MetricDescriptor: Hashable, Sendable, Codable {
     /// Upper bound for the y-axis when the unit does not imply one. Nil means
     /// the chart scales to the data.
     public let nominalMaximum: Double?
+    /// Which way this one runs, when it is one direction of a flow. Nil for
+    /// everything that is not.
+    public let direction: MetricDirection?
 
     public init(
         id: MetricID,
@@ -61,7 +85,8 @@ public struct MetricDescriptor: Hashable, Sendable, Codable {
         group: String,
         unit: MetricUnit,
         kind: MetricKind = .gauge,
-        nominalMaximum: Double? = nil
+        nominalMaximum: Double? = nil,
+        direction: MetricDirection? = nil
     ) {
         self.id = id
         self.name = name
@@ -69,5 +94,6 @@ public struct MetricDescriptor: Hashable, Sendable, Codable {
         self.unit = unit
         self.kind = kind
         self.nominalMaximum = nominalMaximum
+        self.direction = direction
     }
 }

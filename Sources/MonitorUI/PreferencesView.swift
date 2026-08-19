@@ -3,11 +3,12 @@ import SwiftUI
 
 /// The preferences window, opened with Cmd-, from the app menu.
 ///
-/// Two tabs: what the panel draws, and how often it is read. The tab bar was
-/// there when there was only one, because a `TabView` added later moves every
-/// control down by its height, and a preferences window that changes shape
-/// between versions is one people have to re-learn. The frame is fixed for the
-/// same reason: a settings window is not a document window.
+/// Three tabs: which cards there are, how they are drawn, and how often they
+/// are read. The tab bar was there when there was only one, because a `TabView`
+/// added later moves every control down by its height, and a preferences window
+/// that changes shape between versions is one people have to re-learn. The
+/// frame is fixed for the same reason: a settings window is not a document
+/// window.
 public struct PreferencesView: View {
     @Bindable private var model: AppModel
 
@@ -19,6 +20,8 @@ public struct PreferencesView: View {
         TabView {
             LayoutTab(model: model)
                 .tabItem { Label("Layout", systemImage: "square.grid.2x2") }
+            ChartsTab(model: model)
+                .tabItem { Label("Charts", systemImage: "chart.xyaxis.line") }
             SamplingTab(model: model)
                 .tabItem { Label("Sampling", systemImage: "timer") }
         }
@@ -172,6 +175,37 @@ struct LayoutTab: View {
             Spacer()
         }
         .padding(16)
+    }
+}
+
+/// How the charts are drawn, as opposed to which ones there are.
+///
+/// A separate tab from Layout because it is a different question. Layout is
+/// which cards exist; this is how one of them is drawn, and putting the two on
+/// one screen means reading a grid of checkboxes to find a switch that is not
+/// about any single row of it.
+struct ChartsTab: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Mirror paired charts", isOn: $model.charts.mirrorsPairs)
+            } footer: {
+                Text(
+                    "Network in and disk read are drawn above the baseline, out "
+                        + "and written below it. Two directions of one thing "
+                        + "overlap when they both climb from zero, and the shape "
+                        + "of a transfer is easier to read when they cannot. "
+                        + "Both sides share one scale, so a busy download makes "
+                        + "a quiet upload look small — which is what it is."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 

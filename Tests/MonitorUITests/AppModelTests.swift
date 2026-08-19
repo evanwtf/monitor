@@ -217,6 +217,22 @@ struct AppModelTests {
         #expect(second.arrangement.gaugeSize == PanelSize.gauge.initial)
     }
 
+    /// Unlike the arrangement, this one saves on change: it is a checkbox, so
+    /// there is no gesture to end.
+    @Test("the chart setting is written the moment it changes")
+    func chartPreferencesPersist() throws {
+        let defaults = try #require(UserDefaults(suiteName: Self.domain))
+        defaults.removePersistentDomain(forName: Self.domain)
+        let sources = [StubSource(id: "disk", group: "Disk", names: ["Read"])]
+
+        let first = AppModel(sources: sources, defaults: defaults)
+        #expect(first.charts.mirrorsPairs == false)
+        first.charts.mirrorsPairs = true
+
+        let second = AppModel(sources: sources, defaults: defaults)
+        #expect(second.charts.mirrorsPairs)
+    }
+
     @Test("restoring the arrangement puts everything back and writes it")
     func restoreArrangement() throws {
         let defaults = try #require(UserDefaults(suiteName: Self.domain))

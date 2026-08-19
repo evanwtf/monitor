@@ -288,7 +288,11 @@ public struct DashboardView: View {
                     series: series,
                     window: window,
                     isUnavailable: group.metrics.allSatisfy(model.unavailable.contains),
-                    plotHeight: model.arrangement.chartHeight
+                    plotHeight: model.arrangement.chartHeight,
+                    // The metrics the card is *drawing*, not the group's whole
+                    // membership: switch one direction off and the card stops
+                    // being a pair.
+                    mirror: model.charts.mirror(for: series.map(\.descriptor))
                 )
                 card
                     .copyable {
