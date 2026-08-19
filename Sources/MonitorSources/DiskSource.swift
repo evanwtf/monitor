@@ -30,18 +30,20 @@ public final class DiskSource: MetricSource, @unchecked Sendable {
     public var descriptors: [MetricDescriptor] {
         [
             MetricDescriptor(
-                id: Self.bytesRead, name: "Read", group: "Disk", unit: .bytesPerSecond
+                id: Self.bytesRead, name: "Read", group: "Disk", unit: .bytesPerSecond,
+                direction: .inbound
             ),
             MetricDescriptor(
-                id: Self.bytesWritten, name: "Write", group: "Disk", unit: .bytesPerSecond
+                id: Self.bytesWritten, name: "Write", group: "Disk", unit: .bytesPerSecond,
+                direction: .outbound
             ),
             MetricDescriptor(
                 id: Self.readsPerSecond, name: "Reads", group: "Disk Ops",
-                unit: .operationsPerSecond
+                unit: .operationsPerSecond, direction: .inbound
             ),
             MetricDescriptor(
                 id: Self.writesPerSecond, name: "Writes", group: "Disk Ops",
-                unit: .operationsPerSecond
+                unit: .operationsPerSecond, direction: .outbound
             ),
             MetricDescriptor(
                 id: Self.readLatency, name: "Read", group: "Disk Latency",

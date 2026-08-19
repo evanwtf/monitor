@@ -19,31 +19,29 @@ public struct MetricPair: Equatable, Sendable {
 
 /// Which cards are two directions of one thing, and which way round.
 ///
-/// A table here rather than a field on `MetricDescriptor`. A descriptor says
-/// what a metric *is* — name, group, unit, kind — and it is declared by the
-/// source that reads it. "This one points down" is a statement about a picture,
-/// and a disk reader has no business making it. Keeping the table separate also
-/// means a source can be added without deciding whether it has an opposite.
-///
-/// In and out rather than out and in, read above written: the first is the one
-/// that arrives, and download above upload is the way every meter of this kind
-/// has drawn it since modem lights.
+/// No table of metric ids here. A metric declares its own `direction` in
+/// `MetricDescriptor`, so a card is a pair when it draws exactly one inbound
+/// series and one outbound one — and a source added later gets mirroring
+/// without this file being told it exists.
 public enum ChartMirror {
-    public static let pairs = [
-        MetricPair(up: MetricID("net.bits.in"), down: MetricID("net.bits.out")),
-        MetricPair(up: MetricID("disk.bytes.read"), down: MetricID("disk.bytes.written")),
-    ]
-
     /// The pair a card draws, or nil if it does not draw exactly one.
     ///
     /// **Both halves or neither.** A card showing only the download half would
     /// mirror into a single trace hanging below an empty top half, which reads
     /// as a bug rather than as a choice. Switch one direction off in
     /// preferences and the card goes back to drawing upward from zero.
-    public static func pair(for metrics: [MetricID]) -> MetricPair? {
-        let drawn = Set(metrics)
-        guard drawn.count == 2 else { return nil }
-        return pairs.first { drawn == [$0.up, $0.down] }
+    ///
+    /// Inbound above outbound: the first is the one that arrives, and download
+    /// above upload is how every meter of this kind has drawn it since modem
+    /// lights.
+    public static func pair(for descriptors: [MetricDescriptor]) -> MetricPair? {
+        guard descriptors.count == 2 else { return nil }
+        let inbound = descriptors.filter { $0.direction == .inbound }
+        let outbound = descriptors.filter { $0.direction == .outbound }
+        guard inbound.count == 1, let up = inbound.first,
+              outbound.count == 1, let down = outbound.first
+        else { return nil }
+        return MetricPair(up: up.id, down: down.id)
     }
 }
 
@@ -70,9 +68,9 @@ public struct ChartPreferences: Codable, Equatable, Sendable {
 
     /// The pair this card should mirror, given the setting: nil when mirroring
     /// is off, and nil when the card is not a pair.
-    public func mirror(for metrics: [MetricID]) -> MetricPair? {
+    public func mirror(for descriptors: [MetricDescriptor]) -> MetricPair? {
         guard mirrorsPairs else { return nil }
-        return ChartMirror.pair(for: metrics)
+        return ChartMirror.pair(for: descriptors)
     }
 
     private enum CodingKeys: String, CodingKey {

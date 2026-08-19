@@ -59,11 +59,11 @@ public final class MemorySource: MetricSource, @unchecked Sendable {
             MetricDescriptor(id: Self.swapUsed, name: "Swap", group: "Memory", unit: .bytes),
             MetricDescriptor(
                 id: Self.pageIn, name: "Page in", group: "Memory Paging",
-                unit: .operationsPerSecond
+                unit: .operationsPerSecond, direction: .inbound
             ),
             MetricDescriptor(
                 id: Self.pageOut, name: "Page out", group: "Memory Paging",
-                unit: .operationsPerSecond
+                unit: .operationsPerSecond, direction: .outbound
             ),
         ]
     }

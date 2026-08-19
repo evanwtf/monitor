@@ -65,7 +65,7 @@ Sources/
   MonitorCore/     metric model, ring buffer, downsampling, gauge auto-ranging,
                    seven-segment digit mapping, formatting, the sampling clock,
                    the layout, arrangement, chart and sampling preference
-                   models, CSV export. No macOS APIs — so all of it is testable
+                   models, CSV export, chart axis ticks. No macOS APIs — so all of it is testable
                    without a machine to read.
   MonitorSources/  the readers: CPU, memory, disk, network, GPU, SMC sensors
                    (temperature, fans, power), and the registry that lists them.
@@ -148,22 +148,39 @@ are no component-level AGENTS.md files.
   freely during a gesture, then call `commitArrangement()`. Adding a `didSet`
   that saves would turn one decision into hundreds of writes — the thing
   `docs/storage.md` exists to prevent.
-- **Paired charts can be mirrored, and only the picture flips.** Network in
-  and disk read draw above the baseline, out and written below it, when
-  **Mirror paired charts** is on in the Charts tab. The stored sample stays
-  positive — a rate is never negative — so `ChartCard.plotted` negates at draw
-  time and the legend, the formatter, the gauges and the CSV export are
-  untouched. Axis labels are magnitudes on both sides. One symmetric scale, not
-  one per direction: the two share a card in order to be read against each
-  other. `ChartMirror.pairs` (in `MonitorCore`) is the table, deliberately not a
-  field on `MetricDescriptor` — a descriptor says what a metric *is* and is
-  declared by the source that reads it, and "this one points down" is a
-  statement about a picture. A card mirrors only when it draws **both halves**,
-  so switching one direction off returns it to drawing upward rather than
-  leaving a trace under an empty top half. `ChartPreferences` is its own type
-  and key beside `LayoutPreferences`: **which cards exist** versus **how one is
-  drawn**. Off by default, because a chart that changes shape on upgrade is
-  worse than one somebody switches on.
+- **A metric declares which way it runs.** `MetricDescriptor.direction` is
+  `.inbound`, `.outbound`, or nil for everything that is not one direction of a
+  flow. Five groups pair up: Network, Network Packets, Disk, Disk Ops, Memory
+  Paging. Read and write *latency* deliberately declare nothing — two
+  measurements of the same kind are not two directions of one flow. A group
+  that declares a direction must declare its opposite too, checked against the
+  real registry in `MonitorSourcesTests`.
+- **Paired charts can be mirrored, and only the picture flips.** Inbound draws
+  above the baseline and outbound below it when **Mirror paired charts** is on
+  in the Charts tab. The stored sample stays positive — a rate is never
+  negative — so `ChartCard.plotted` negates at draw time and the legend, the
+  formatter, the gauges and the CSV export are untouched. Axis labels are
+  magnitudes on both sides. One symmetric scale, not one per direction: the two
+  share a card in order to be read against each other. A card mirrors only when
+  it draws **both halves**, so switching one direction off returns it to drawing
+  upward rather than leaving a trace under an empty top half. `ChartPreferences`
+  is its own type and key beside `LayoutPreferences`: **which cards exist**
+  versus **how one is drawn**. Off by default, because a chart that changes
+  shape on upgrade is worse than one somebody switches on.
+- **The time axis is computed, not automatic.** `ChartAxis` in `MonitorCore`.
+  Three rules, and the first two versions traded one for another: a tick is an
+  **instant** (10:42:00 sits at 10:42:00 and scrolls left keeping its label —
+  ticks at fractions of the window stand still while their labels count up in
+  real time); never more labels than fit; and **never fewer than two**, which
+  wins where it conflicts with the second. The interval is chosen from the
+  window's **length alone, never its position** — the count drifts by one as a
+  tick scrolls off, but an interval chosen by counting actual ticks flips
+  between rungs as the window slides and the axis restyles itself every few
+  seconds. No AM/PM; seconds only when the interval is under a minute.
+- **A card's header fits, it does not count.** Title beside legend when it fits,
+  stacked when it does not, decided by `ViewThatFits`. A count of series cannot
+  know how wide the words are, and since the title is `fixedSize` a header that
+  did not fit pushed the card past its grid column and stretched the row.
 - **A card can be copied, and the copy is not what the panel shows.**
   Right-click any tile for **Copy Image** (the tile rendered on its own with
   `ImageRenderer`, not captured from the window) and **Copy Data** (the visible

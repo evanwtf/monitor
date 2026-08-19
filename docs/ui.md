@@ -184,10 +184,10 @@ above the baseline, the other below. Zero moves to the middle of the plot.
 Upload and download become two shapes that cannot be confused, and the shape of
 a transfer — a burst up, a long tail down — is readable without reading the key.
 
-Two cards are pairs: Network (in up, out down) and Disk (read up, written down).
-In above out and read above written, because the first is the one that arrives,
-and download above upload is how every meter of this kind has drawn it since
-modem lights.
+Five cards are pairs: Network, Network Packets, Disk, Disk Ops and Memory
+Paging. Inbound above outbound in every case — in above out, read above written,
+page in above page out — because the first is the one that arrives, and download
+above upload is how every meter of this kind has drawn it since modem lights.
 
 ### Only the picture flips
 
@@ -212,13 +212,31 @@ metrics of one. Switch Network Out off in the Layout tab and the card stops
 mirroring rather than leaving a single trace hanging below an empty top half,
 which reads as a bug rather than as a choice.
 
-### Where the table lives
+### Pairing is declared, not tabulated
 
-`ChartMirror.pairs` in `MonitorCore`, not a field on `MetricDescriptor`. A
-descriptor says what a metric *is*, and it is declared by the source that reads
-it; "this one points down" is a statement about a picture, and a disk reader has
-no business making it. A separate table also means a source can be added without
-deciding whether it has an opposite.
+A metric says which way it runs. `MetricDescriptor.direction` is `.inbound`,
+`.outbound`, or nil for the great majority that are not one direction of
+anything. A card is a pair when it draws exactly one inbound series and one
+outbound one, so there is no table of metric ids anywhere and a source added
+later gets mirroring without this being told it exists.
+
+The first version *was* a table, on the reasoning that "this one points down" is
+a statement about a picture and a disk reader has no business making it. That
+reasoning was right about the wrong thing: which way a byte is travelling is a
+fact about the metric, and only the decision to draw one below a line is about
+the picture. The fact belongs on the descriptor; the picture stays in
+`ChartPreferences`.
+
+Read and write *latency* are the instructive case. They share a card and look
+like a pair, and neither declares a direction, so the card never mirrors — two
+measurements of the same kind are not two directions of one flow, and drawing a
+slow write below the line would say a slow write is the opposite of a slow read.
+
+Two tests hold the declaration together: every group that declares a direction
+must have exactly one metric of each, checked against the real registry in
+`MonitorSourcesTests`. A group with an inbound metric and no outbound one can
+never mirror, which is a declaration somebody half finished rather than a
+choice.
 
 `ChartPreferences` is its own type beside `LayoutPreferences` for the matching
 reason: **`LayoutPreferences` is which cards exist, `ChartPreferences` is how one
@@ -228,6 +246,70 @@ checkbox has no gesture to end.
 
 Off by default. Mirroring is the clearer way to read throughput, but a chart
 that changes shape under somebody on upgrade is worse than one they switch on.
+
+## The time axis
+
+Three things have to be true of the labels along the bottom, and the first two
+versions of this got one of them at the expense of another.
+
+**A tick is an instant, not a position.** 10:42:00 belongs at 10:42:00. As the
+window scrolls that gridline travels left, keeps its label, and eventually
+leaves. Ticks placed at fractions of the window do the opposite: the gridline
+stands still while the time under it counts up in real time, which is a clock,
+not an axis.
+
+**Never more labels than fit.** `.automatic(desiredCount:)` treats the count as
+a hint and chooses its own boundaries, so on the narrowest column the grid makes
+the labels collided and the last one ran off the edge as `10:34…`.
+
+**Never fewer than two.** One lonely label says nothing about the span you are
+looking at, and none says less.
+
+`ChartAxis` in `MonitorCore` holds the arithmetic, which is why it is testable
+without a window.
+
+### The interval comes from the window's length, never its position
+
+The ticks are absolute instants, so how many land inside the window depends on
+where the window happens to sit — the same interval yields three, two, one or
+none as it slides. An early version chose the interval by counting what it
+actually produced, which meant a narrow ten-minute card flipped between 300 s
+and 120 s every few seconds and the labels jumped between two and five.
+
+So the interval is chosen from the length alone: the coarsest rung of the ladder
+(1, 2, 5, 10, 15, 30 s, then 1, 2, 5, 10 min) that fits two of itself in the
+window, or a finer one where the card has room for more. The count still drifts
+by one as a tick scrolls off the edge, which is correct and invisible. The
+interval does not move.
+
+Where the two rules conflict — a narrow card showing five minutes cannot have
+both two labels and no more than two — **two labels win**. A bare axis is worse
+than a tight one.
+
+### Details
+
+Ticks are held 6% in from each edge, because a label is centred on its tick and
+one against the edge is half cut off. A tick inside that band is dropped rather
+than nudged: moving it would put it somewhere that is not the time it claims.
+
+Seconds appear only when the interval is under a minute, where two labels would
+otherwise land inside the same minute and read as the same time twice.
+
+No AM/PM at any width. A card shows ten minutes of history at most, so which
+half of the day it is was never in question, and those two characters were most
+of what made the labels collide.
+
+## Title and legend: fit, not count
+
+A card puts its legend beside the title when it fits and underneath when it does
+not, and `ViewThatFits` decides by proposing the column's width.
+
+It used to decide by counting series, which cannot work: a count does not know
+how wide the words are. "Memory Paging" beside "Page in 19/s  Page out 4.0/s" is
+two series and does not fit; "GPU" beside "GPU 0%  VRAM 1.9 GB" is two series
+and does. The title is `fixedSize` — it must not truncate — so a header that did
+not fit pushed the card wider than its grid column, which stretched the whole
+row and ran the legend out through the card's edge.
 
 ## Copying a card
 

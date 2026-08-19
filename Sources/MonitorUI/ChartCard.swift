@@ -57,29 +57,29 @@ public struct ChartCard: View {
         )
     }
 
-    /// Above this many series the legend gets its own line rather than sharing
-    /// one with the title.
+    /// Title and legend on one line when they fit, and on two when they do not.
     ///
-    /// Three is what fits beside a title at the narrowest column the grid
-    /// makes. Memory has seven, and squeezed into the space left over they
-    /// wrapped four rows deep — or, before the legend could wrap at all,
-    /// compressed into a row of ellipses, which is what this fixes.
-    private static let inlineLegendLimit = 3
-
+    /// Decided by fit rather than by counting series, which is what it used to
+    /// do. A count cannot know how wide the words are: "Memory Paging" beside
+    /// "Page in 19/s  Page out 4.0/s" is two series and does not fit, while
+    /// "GPU" beside "GPU 0%  VRAM 1.9 GB" is two series and does. With the
+    /// title `fixedSize` — it must not truncate — a header that did not fit
+    /// pushed the whole card wider than its grid column, which stretched the
+    /// row and left the legend running out through the card's edge.
+    ///
+    /// `ViewThatFits` proposes the column's width to the first arrangement and
+    /// falls back to the second, so the compact line survives wherever there is
+    /// room for it.
     private var header: some View {
-        // Two arrangements, not one that adapts: a card with two series should
-        // keep the compact single line, and only the crowded card should spend
-        // a second line on chrome.
-        VStack(alignment: .leading, spacing: 4) {
-            if series.count > Self.inlineLegendLimit {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 8) {
+                titleText
+                Spacer(minLength: 0)
+                legend
+            }
+            VStack(alignment: .leading, spacing: 4) {
                 titleText
                 legend
-            } else {
-                HStack(alignment: .top, spacing: 8) {
-                    titleText
-                    Spacer(minLength: 0)
-                    legend
-                }
             }
         }
     }
@@ -234,14 +234,58 @@ public struct ChartCard: View {
             }
         }
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 3)) { _ in
+            AxisMarks(values: xTicks) { _ in
                 AxisGridLine().foregroundStyle(Theme.panelEdge.opacity(0.3))
-                AxisValueLabel(format: .dateTime.hour().minute(), centered: false)
+                AxisValueLabel(format: timeFormat, centered: true)
                     .font(.system(size: Theme.Layout.axisLabel, design: .rounded))
                     .foregroundStyle(Theme.label)
             }
         }
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: PlotWidthKey.self, value: proxy.size.width)
+            }
+        )
+        .onPreferenceChange(PlotWidthKey.self) { plotWidth = $0 }
         .frame(minHeight: plotHeight)
+    }
+
+    /// How wide the card is, which decides how many time labels fit.
+    ///
+    /// Measured rather than assumed: the width comes from the grid, and the
+    /// grid's column width is a slider in the toolbar. A count fixed in the
+    /// source is right at exactly one card size.
+    @State private var plotWidth = 0.0
+
+    private struct PlotWidthKey: PreferenceKey {
+        static let defaultValue = 0.0
+        static func reduce(value: inout Double, nextValue: () -> Double) {
+            value = max(value, nextValue())
+        }
+    }
+
+    /// The labelled instants and their spacing — see `ChartAxis`, which is
+    /// where the arithmetic lives and where it is tested.
+    private var marks: ChartAxis.Marks {
+        let range = xRange
+        return ChartAxis.marks(
+            from: range.start, to: range.end,
+            maximumTicks: ChartAxis.maximumTicks(width: plotWidth)
+        )
+    }
+
+    private var xTicks: [Date] {
+        marks.times.map { Date(timeIntervalSince1970: $0) }
+    }
+
+    /// No AM/PM. A card shows at most ten minutes of history, so which half of
+    /// the day it is was never in question, and those two characters were most
+    /// of what made the labels collide.
+    private var timeFormat: Date.FormatStyle {
+        let base = Date.FormatStyle.dateTime
+            .hour(.twoDigits(amPM: .omitted))
+            .minute(.twoDigits)
+        return ChartAxis.showsSeconds(stride: marks.stride) ? base.second(.twoDigits) : base
     }
 
     /// The visible time span, as raw timestamps.

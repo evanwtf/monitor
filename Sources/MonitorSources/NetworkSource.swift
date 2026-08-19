@@ -54,18 +54,20 @@ public final class NetworkSource: MetricSource, @unchecked Sendable {
     public var descriptors: [MetricDescriptor] {
         [
             MetricDescriptor(
-                id: Self.bitsIn, name: "In", group: "Network", unit: .bitsPerSecond
+                id: Self.bitsIn, name: "In", group: "Network", unit: .bitsPerSecond,
+                direction: .inbound
             ),
             MetricDescriptor(
-                id: Self.bitsOut, name: "Out", group: "Network", unit: .bitsPerSecond
+                id: Self.bitsOut, name: "Out", group: "Network", unit: .bitsPerSecond,
+                direction: .outbound
             ),
             MetricDescriptor(
                 id: Self.packetsIn, name: "Packets in", group: "Network Packets",
-                unit: .operationsPerSecond
+                unit: .operationsPerSecond, direction: .inbound
             ),
             MetricDescriptor(
                 id: Self.packetsOut, name: "Packets out", group: "Network Packets",
-                unit: .operationsPerSecond
+                unit: .operationsPerSecond, direction: .outbound
             ),
         ]
     }

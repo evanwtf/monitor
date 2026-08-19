@@ -15,6 +15,31 @@ struct SourceTests {
         #expect(all.count == Set(all).count, "two metrics share an id; history would collide")
     }
 
+    @Test("a declared direction always has its opposite in the same group")
+    func directionsComeInPairs() {
+        // A group with an inbound metric and no outbound one can never mirror,
+        // which is a declaration somebody half finished rather than a choice.
+        // Checked against the real registry, which `MonitorCoreTests` cannot
+        // see — it is the layer below this one.
+        let directed = SourceRegistry.allDescriptors.filter { $0.direction != nil }
+        #expect(!directed.isEmpty)
+        for group in Set(directed.map(\.group)) {
+            let members = directed.filter { $0.group == group }
+            #expect(
+                members.count(where: { $0.direction == .inbound }) == 1,
+                "\(group) needs exactly one inbound metric"
+            )
+            #expect(
+                members.count(where: { $0.direction == .outbound }) == 1,
+                "\(group) needs exactly one outbound metric"
+            )
+            #expect(
+                ChartMirror.pair(for: members) != nil,
+                "\(group) declares directions but does not form a pair"
+            )
+        }
+    }
+
     @Test("CPU load is a fraction, and the first read is only a baseline")
     func cpu() throws {
         let source = CPUSource()
