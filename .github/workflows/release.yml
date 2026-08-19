@@ -40,6 +40,11 @@ concurrency:
 
 permissions:
   contents: write
+  # Reading the merge's labels needs this. The block sets every scope it does
+  # not name to `none`, so with `contents` alone the label lookup could only
+  # ever be refused — and a refusal used to look exactly like an unlabelled
+  # merge.
+  pull-requests: read
 
 jobs:
   # Works out this merge's version, writes it to Version.swift, and creates the
@@ -83,18 +88,44 @@ jobs:
             echo "tag=v$current" >> "$GITHUB_OUTPUT"
             echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
             echo "Version.swift already says $current — releasing that." \
-                >> "$GITHUB_STEP_SUMMARY"
+                | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          # Labels of the pull request this commit came from. A direct push to
-          # main belongs to no pull request, which is simply no labels.
-          labels="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
-              --jq '.[].labels[].name' | sort -u || true)"
+          # Labels of the pull request this merge came from.
+          #
+          # Read from the number in the commit subject rather than by asking
+          # GitHub which pull request a commit belongs to. That association is
+          # not reliably there at the moment this runs: the same query answered
+          # correctly for two merges and returned nothing for the next two, all
+          # four carrying the label, and every one of those shipped as a patch
+          # because an empty answer and "no labels" are the same value. A squash
+          # merge writes the number into its own subject, so this reads what the
+          # merge itself says.
+          #
+          # A direct push to main has no number in its subject, which is simply
+          # no labels — that path still gets the patch default, on purpose.
+          labels=""
+          number="$(git log -1 --pretty=%s \
+              | sed -n 's/.*(#\([0-9][0-9]*\))$/\1/p')"
+          if [ -n "$number" ]; then
+            # No `|| true`. The previous version swallowed every failure into an
+            # empty label list, so a broken lookup was indistinguishable from an
+            # unlabelled merge and silently shipped the wrong version. A lookup
+            # that cannot answer should stop the release, not guess at it.
+            # A number in the subject that is not a pull request stops the
+            # release. That is the intended trade: a blocked release is a
+            # message, and a release that quietly picks the wrong version is
+            # not.
+            labels="$(gh pr view "$number" --json labels --jq '.labels[].name' \
+                | sort -u)"
+          fi
+          echo "Pull request: ${number:-none}"
+          echo "Labels: ${labels:-none}"
 
           if grep -qx 'release:skip' <<<"$labels"; then
             echo "Labelled release:skip — publishing nothing." \
-                >> "$GITHUB_STEP_SUMMARY"
+                | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -105,13 +136,14 @@ jobs:
           if [ -n "$changed" ] \
               && ! grep -qvE '^(docs/|\.github/|[^/]*\.md$)' <<<"$changed"; then
             echo "Documentation only — publishing nothing." \
-                >> "$GITHUB_STEP_SUMMARY"
+                | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
           level="patch"
           if grep -qx 'release:minor' <<<"$labels"; then level="minor"; fi
           if grep -qx 'release:major' <<<"$labels"; then level="major"; fi
+          echo "Bump: $level"
 
           IFS=. read -r major minor patch <<<"$current"
           case "$level" in
@@ -146,7 +178,7 @@ jobs:
           echo "tag=v$next" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "Releasing v$next ($level bump from $current)" \
-              >> "$GITHUB_STEP_SUMMARY"
+              | tee -a "$GITHUB_STEP_SUMMARY"
 
       # What the notes say about the first launch depends on whether the build
       # is notarized, and NOTARY_PROFILE is what decides that (see package.yml).
