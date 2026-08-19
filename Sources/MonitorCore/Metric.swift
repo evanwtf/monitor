@@ -63,6 +63,27 @@ public enum MetricDirection: String, Sendable, Codable {
     case outbound
 }
 
+/// How a metric relates to the others in its group.
+///
+/// Most have no relation: two temperature sensors are two readings, and neither
+/// is a slice or a sum of the other. Some groups are a whole divided up —
+/// memory is app, wired, compressed, cached and free — and there stacking the
+/// slices shows the total as well as the split, which lines drawn from zero
+/// cannot.
+///
+/// A fact about the metric, like `direction`. Whether the parts are then
+/// *drawn* stacked is a preference in `ChartPreferences`.
+public enum MetricComposition: String, Sendable, Codable {
+    /// One slice of the group's whole. Slices do not overlap, so they can be
+    /// stacked.
+    case part
+    /// A sum of other metrics in the same group: memory Used is app plus wired
+    /// plus compressed, CPU Total is user plus system. **Never stacked** — it
+    /// would count its own parts a second time. Drawn as a line over the bands,
+    /// where it lands exactly on top of the slices it sums.
+    case aggregate
+}
+
 /// Everything the UI needs to draw a series without knowing where it came from.
 public struct MetricDescriptor: Hashable, Sendable, Codable {
     public let id: MetricID
@@ -78,6 +99,9 @@ public struct MetricDescriptor: Hashable, Sendable, Codable {
     /// Which way this one runs, when it is one direction of a flow. Nil for
     /// everything that is not.
     public let direction: MetricDirection?
+    /// Whether this one is a slice of its group's whole, or a sum of those
+    /// slices. Nil for the metrics that are neither.
+    public let composition: MetricComposition?
 
     public init(
         id: MetricID,
@@ -86,7 +110,8 @@ public struct MetricDescriptor: Hashable, Sendable, Codable {
         unit: MetricUnit,
         kind: MetricKind = .gauge,
         nominalMaximum: Double? = nil,
-        direction: MetricDirection? = nil
+        direction: MetricDirection? = nil,
+        composition: MetricComposition? = nil
     ) {
         self.id = id
         self.name = name
@@ -95,5 +120,6 @@ public struct MetricDescriptor: Hashable, Sendable, Codable {
         self.kind = kind
         self.nominalMaximum = nominalMaximum
         self.direction = direction
+        self.composition = composition
     }
 }

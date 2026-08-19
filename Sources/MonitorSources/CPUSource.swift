@@ -51,14 +51,15 @@ public final class CPUSource: MetricSource, @unchecked Sendable {
         var result = [
             MetricDescriptor(
                 id: Self.total, name: "Total", group: "CPU", unit: .fraction,
-                nominalMaximum: 1
+                nominalMaximum: 1, composition: .aggregate
             ),
             MetricDescriptor(
-                id: Self.user, name: "User", group: "CPU", unit: .fraction, nominalMaximum: 1
+                id: Self.user, name: "User", group: "CPU", unit: .fraction, nominalMaximum: 1,
+                composition: .part
             ),
             MetricDescriptor(
                 id: Self.system, name: "System", group: "CPU", unit: .fraction,
-                nominalMaximum: 1
+                nominalMaximum: 1, composition: .part
             ),
         ]
         for cluster in clusters {

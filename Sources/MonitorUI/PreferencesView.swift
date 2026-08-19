@@ -190,6 +190,23 @@ struct ChartsTab: View {
     var body: some View {
         Form {
             Section {
+                Toggle("Stack the parts of a whole", isOn: $model.charts.stacksParts)
+            } footer: {
+                Text(
+                    "Memory is app, wired, compressed, cached and free — five "
+                        + "slices of one machine's RAM — and CPU is user plus "
+                        + "system. Stacked, the bands show the split and the "
+                        + "total at once, which lines all climbing from zero "
+                        + "cannot. A total such as Memory Used keeps its line "
+                        + "and lands on top of the bands it sums, because "
+                        + "stacking it would count them twice."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section {
                 Toggle("Mirror paired charts", isOn: $model.charts.mirrorsPairs)
             } footer: {
                 Text(

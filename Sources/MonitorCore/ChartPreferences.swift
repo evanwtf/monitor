@@ -45,6 +45,28 @@ public enum ChartMirror {
     }
 }
 
+/// Which cards are a whole divided into slices.
+///
+/// No table here either. A metric declares its own `composition`, so a card can
+/// be stacked when it draws two or more slices — and a source added later gets
+/// it without this file being told it exists.
+public enum ChartStack {
+    /// The slices a card draws, in the order it draws them, or empty when it
+    /// has nothing to stack.
+    ///
+    /// **Two or more.** A single band is an area chart with extra steps, and it
+    /// says nothing a line does not.
+    ///
+    /// Everything else on the card keeps its line — an aggregate especially.
+    /// Memory Used is app plus wired plus compressed, so stacking it would
+    /// count those three twice; drawn as a line it lands exactly on top of the
+    /// bands it sums, which reads as a check rather than a contradiction.
+    public static func parts(of descriptors: [MetricDescriptor]) -> [MetricID] {
+        let parts = descriptors.filter { $0.composition == .part }
+        return parts.count >= 2 ? parts.map(\.id) : []
+    }
+}
+
 /// How the charts are drawn, as opposed to which ones there are.
 ///
 /// Its own type beside `LayoutPreferences` rather than a field on it, because
@@ -60,8 +82,15 @@ public struct ChartPreferences: Codable, Equatable, Sendable {
     /// they have to switch on.
     public var mirrorsPairs: Bool
 
-    public init(mirrorsPairs: Bool = false) {
+    /// Draw a card's slices as stacked bands rather than as lines from zero.
+    ///
+    /// Off by default, for the same reason mirroring is: a chart that changes
+    /// shape under somebody on upgrade is worse than one they switch on.
+    public var stacksParts: Bool
+
+    public init(mirrorsPairs: Bool = false, stacksParts: Bool = false) {
         self.mirrorsPairs = mirrorsPairs
+        self.stacksParts = stacksParts
     }
 
     public static let `default` = ChartPreferences()
@@ -73,15 +102,27 @@ public struct ChartPreferences: Codable, Equatable, Sendable {
         return ChartMirror.pair(for: descriptors)
     }
 
+    /// The slices this card should stack, given the setting: empty when
+    /// stacking is off, and empty when the card has nothing to stack.
+    public func stack(for descriptors: [MetricDescriptor]) -> [MetricID] {
+        guard stacksParts else { return [] }
+        return ChartStack.parts(of: descriptors)
+    }
+
     private enum CodingKeys: String, CodingKey {
         case mirrorsPairs
+        case stacksParts
     }
 
     /// `decodeIfPresent`, so a value written before a setting existed still
     /// decodes rather than resetting the whole struct to its defaults.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let stored = try container.decodeIfPresent(Bool.self, forKey: .mirrorsPairs)
-        self.init(mirrorsPairs: stored ?? ChartPreferences.default.mirrorsPairs)
+        let mirrors = try container.decodeIfPresent(Bool.self, forKey: .mirrorsPairs)
+        let stacks = try container.decodeIfPresent(Bool.self, forKey: .stacksParts)
+        self.init(
+            mirrorsPairs: mirrors ?? ChartPreferences.default.mirrorsPairs,
+            stacksParts: stacks ?? ChartPreferences.default.stacksParts
+        )
     }
 }

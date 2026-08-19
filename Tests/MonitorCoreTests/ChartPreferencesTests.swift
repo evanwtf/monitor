@@ -3,13 +3,21 @@ import Foundation
 import Testing
 
 private func metric(
-    _ id: String, _ name: String, group: String, direction: MetricDirection? = nil
+    _ id: String, _ name: String, group: String,
+    direction: MetricDirection? = nil,
+    composition: MetricComposition? = nil
 ) -> MetricDescriptor {
     MetricDescriptor(
         id: MetricID(id), name: name, group: group, unit: .bitsPerSecond,
-        direction: direction
+        direction: direction, composition: composition
     )
 }
+
+private let app = metric("memory.app", "App", group: "Memory", composition: .part)
+private let wired = metric("memory.wired", "Wired", group: "Memory", composition: .part)
+private let free = metric("memory.free", "Free", group: "Memory", composition: .part)
+private let used = metric("memory.used", "Used", group: "Memory", composition: .aggregate)
+private let swap = metric("memory.swap.used", "Swap", group: "Memory")
 
 private let netIn = metric("net.bits.in", "In", group: "Network", direction: .inbound)
 private let netOut = metric("net.bits.out", "Out", group: "Network", direction: .outbound)
@@ -77,12 +85,76 @@ struct ChartMirrorTests {
     }
 }
 
+@Suite("ChartStack")
+struct ChartStackTests {
+    @Test("The slices of a whole stack")
+    func stacksParts() {
+        #expect(ChartStack.parts(of: [app, wired, free]).count == 3)
+    }
+
+    @Test("A sum of the slices never stacks")
+    func aggregateStaysOut() {
+        // Memory Used is app plus wired plus compressed. Stacked, it would
+        // count those three a second time and put the top of the card at nearly
+        // twice the RAM in the machine.
+        let stack = ChartStack.parts(of: [app, wired, free, used])
+        #expect(!stack.contains(used.id))
+        #expect(stack.count == 3)
+    }
+
+    @Test("A metric that is neither never stacks")
+    func unrelatedStaysOut() {
+        // Swap is on disk. It shares the card, and it is not a slice of the
+        // machine's RAM.
+        #expect(!ChartStack.parts(of: [app, wired, swap]).contains(swap.id))
+    }
+
+    @Test("One slice on its own is not a stack")
+    func singlePart() {
+        // A single band is an area chart with extra steps.
+        #expect(ChartStack.parts(of: [app]).isEmpty)
+        #expect(ChartStack.parts(of: [app, used, swap]).isEmpty)
+        #expect(ChartStack.parts(of: []).isEmpty)
+    }
+
+    @Test("The slices keep the order the card draws them in")
+    func keepsOrder() {
+        // The stack is drawn bottom-up in this order, and the order is the
+        // reader's own layout order.
+        #expect(ChartStack.parts(of: [free, app, wired]) == [free.id, app.id, wired.id])
+    }
+
+    @Test("A card cannot be both a stack and a pair")
+    func stacksAndPairsAreExclusive() {
+        // Two directions of a flow are not slices of a whole. Nothing declares
+        // both, and a band drawn below a baseline would be nonsense.
+        #expect(ChartStack.parts(of: [netIn, netOut]).isEmpty)
+        #expect(ChartMirror.pair(for: [app, wired]) == nil)
+    }
+}
+
 @Suite("ChartPreferences")
 struct ChartPreferencesTests {
-    @Test("Mirroring is off until it is switched on")
+    @Test("Both settings are off until they are switched on")
     func offByDefault() {
         #expect(ChartPreferences.default.mirrorsPairs == false)
+        #expect(ChartPreferences.default.stacksParts == false)
         #expect(ChartPreferences.default.mirror(for: [netIn, netOut]) == nil)
+        #expect(ChartPreferences.default.stack(for: [app, wired, free]).isEmpty)
+    }
+
+    @Test("Switched on, a card of slices stacks and everything else does not")
+    func onlyPartsStack() {
+        let preferences = ChartPreferences(stacksParts: true)
+        #expect(preferences.stack(for: [app, wired, free]).count == 3)
+        #expect(preferences.stack(for: [netIn, netOut]).isEmpty)
+    }
+
+    @Test("The two settings are independent")
+    func settingsAreIndependent() {
+        let stacking = ChartPreferences(mirrorsPairs: false, stacksParts: true)
+        #expect(stacking.mirror(for: [netIn, netOut]) == nil)
+        #expect(!stacking.stack(for: [app, wired]).isEmpty)
     }
 
     @Test("Switched on, a pair mirrors and everything else does not")
@@ -94,7 +166,7 @@ struct ChartPreferencesTests {
 
     @Test("Round-trips through Codable")
     func codable() throws {
-        let preferences = ChartPreferences(mirrorsPairs: true)
+        let preferences = ChartPreferences(mirrorsPairs: true, stacksParts: true)
         let data = try JSONEncoder().encode(preferences)
         #expect(try JSONDecoder().decode(ChartPreferences.self, from: data) == preferences)
     }

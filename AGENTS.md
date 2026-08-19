@@ -155,6 +155,20 @@ are no component-level AGENTS.md files.
   measurements of the same kind are not two directions of one flow. A group
   that declares a direction must declare its opposite too, checked against the
   real registry in `MonitorSourcesTests`.
+- **A metric declares whether it is a slice of a whole.**
+  `MetricDescriptor.composition` is `.part`, `.aggregate` or nil. Memory (app,
+  wired, compressed, cached, free) and CPU (user, system) are slices; Memory
+  Used and CPU Total are the sums of them; Memory Swap is neither, being on
+  disk. **An aggregate must never be stacked** — Used is app plus wired plus
+  compressed, so a band for it counts those three twice and puts the top of the
+  card at nearly twice the machine's RAM. It keeps a line, which lands on top of
+  the bands it sums. Lines on a stacked card are **dashed**, with a hollow
+  legend swatch, because a solid stroke among bands reads as one more slice. A
+  card stacks only when it draws two or more slices, and its y-axis is bounded
+  by the **summed** height rather than the tallest band. `MonitorSourcesTests`
+  holds the claim against the real machine: the slices account for 85–102% of
+  physical RAM, so they do not overlap. Nothing is both a slice and a direction,
+  and a registry test proves it.
 - **Paired charts can be mirrored, and only the picture flips.** Inbound draws
   above the baseline and outbound below it when **Mirror paired charts** is on
   in the Charts tab. The stored sample stays positive — a rate is never

@@ -23,6 +23,12 @@ public struct ChartCard: View {
     /// Passed in rather than worked out here, because whether to mirror is a
     /// preference and a card does not read preferences.
     public var mirror: MetricPair?
+    /// The series to draw as stacked bands rather than as lines. Empty is the
+    /// ordinary card.
+    ///
+    /// Passed in rather than worked out here, for the same reason `mirror` is:
+    /// whether to stack is a preference, and a card does not read preferences.
+    public var stacked: [MetricID] = []
 
     public init(
         title: String,
@@ -30,7 +36,8 @@ public struct ChartCard: View {
         window: TimeInterval,
         isUnavailable: Bool = false,
         plotHeight: Double = Theme.Layout.chartMinHeight,
-        mirror: MetricPair? = nil
+        mirror: MetricPair? = nil,
+        stacked: [MetricID] = []
     ) {
         self.title = title
         self.series = series
@@ -38,6 +45,10 @@ public struct ChartCard: View {
         self.isUnavailable = isUnavailable
         self.plotHeight = plotHeight
         self.mirror = mirror
+        // A card is one or the other. Two directions of a flow are not slices
+        // of a whole, so nothing declares both — but drawing bands below a
+        // baseline would be nonsense, so it cannot happen by accident either.
+        self.stacked = mirror == nil ? stacked : []
     }
 
     public var body: some View {
@@ -131,9 +142,16 @@ public struct ChartCard: View {
         _ descriptor: MetricDescriptor, index: Int, latest: Sample
     ) -> some View {
         HStack(spacing: 4) {
-            Circle()
-                .fill(Theme.seriesColor(index))
-                .frame(width: 7, height: 7)
+            // Filled for a band, hollow for a line — the same distinction the
+            // chart makes, so the key does not have to be guessed at.
+            Group {
+                if stacked.isEmpty || isBand(descriptor) {
+                    Circle().fill(Theme.seriesColor(index))
+                } else {
+                    Circle().strokeBorder(Theme.seriesColor(index), lineWidth: 1.5)
+                }
+            }
+            .frame(width: 7, height: 7)
             Text(descriptor.name)
                 .foregroundStyle(Theme.label)
                 .lineLimit(1)
@@ -197,12 +215,26 @@ public struct ChartCard: View {
             }
             ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
                 ForEach(entry.points, id: \.timestamp) { sample in
-                    LineMark(
-                        x: .value("Time", Date(timeIntervalSince1970: sample.timestamp)),
-                        y: .value("Value", plotted(sample.value, of: entry.descriptor))
+                    let x = PlottableValue.value(
+                        "Time", Date(timeIntervalSince1970: sample.timestamp)
                     )
-                    .foregroundStyle(Theme.seriesColor(index))
-                    .interpolationMethod(.monotone)
+                    let y = PlottableValue.value(
+                        "Value", plotted(sample.value, of: entry.descriptor)
+                    )
+                    // Bands for the slices, lines for everything else on the
+                    // card. Swift Charts stacks area marks that share an x and
+                    // differ by series, and leaves the line marks alone, so the
+                    // two kinds sit on one chart without arguing.
+                    if stacked.contains(entry.descriptor.id) {
+                        AreaMark(x: x, y: y)
+                            .foregroundStyle(Theme.seriesColor(index).opacity(0.85))
+                            .interpolationMethod(.monotone)
+                    } else {
+                        LineMark(x: x, y: y)
+                            .foregroundStyle(Theme.seriesColor(index))
+                            .interpolationMethod(.monotone)
+                            .lineStyle(lineStyle)
+                    }
                 }
                 .foregroundStyle(by: .value("Series", entry.descriptor.name))
             }
@@ -330,7 +362,44 @@ public struct ChartCard: View {
         // Scaled to what is on screen, not to the whole buffer. Otherwise a
         // spike eight minutes off the left of a two-minute window flattens
         // everything you can actually see.
-        let peak = visible.flatMap { $0.points.map(\.value) }.max() ?? 1
+        //
+        // A stack is measured by its total height, not by its tallest band. Its
+        // top is what the eye reads, and scaling to one band would push the
+        // stack out through the top of the card.
+        let peak = max(
+            visible.flatMap { $0.points.map(\.value) }.max() ?? 1, stackedPeak ?? 0
+        )
         return max(peak * 1.15, .leastNonzeroMagnitude)
+    }
+
+    /// Solid on an ordinary card, dashed on a stacked one.
+    ///
+    /// A line among bands is a different kind of statement and has to look like
+    /// one. Memory Used is a *sum* of three of the bands under it and Swap is
+    /// not in the machine's RAM at all, so drawing them in the same solid
+    /// stroke the card uses elsewhere invites reading them as one more slice.
+    private var lineStyle: StrokeStyle {
+        stacked.isEmpty
+            ? StrokeStyle(lineWidth: 2)
+            : StrokeStyle(lineWidth: 2, dash: [4, 3])
+    }
+
+    /// Whether this series is drawn as a band. The legend asks so its swatch
+    /// can say the same thing the chart does.
+    private func isBand(_ descriptor: MetricDescriptor) -> Bool {
+        stacked.contains(descriptor.id)
+    }
+
+    /// The tallest the stack gets inside the window: the parts summed per
+    /// timestamp, then the largest of those sums.
+    private var stackedPeak: Double? {
+        guard !stacked.isEmpty else { return nil }
+        var totals: [TimeInterval: Double] = [:]
+        for entry in visible where stacked.contains(entry.descriptor.id) {
+            for sample in entry.points {
+                totals[sample.timestamp, default: 0] += sample.value
+            }
+        }
+        return totals.values.max()
     }
 }
