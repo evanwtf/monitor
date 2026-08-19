@@ -434,6 +434,64 @@ would be one more thing to remember.
 The pasteboard is somewhere the user asked for it to go, once, by choosing a
 menu item. `MonitorStore` stays unlinked and the ring buffer stays in memory.
 
+## Zooming one tile
+
+The panel is a wall of tiles sized to be glanced at. When one of them is the
+reason you opened the app you want it big, and the size sliders are the wrong
+tool: they resize *every* card, and they have to be put back afterwards.
+
+**Double-click a tile to zoom it. Escape, Done, or another double-click closes
+it.**
+
+### It is a mode, not a property
+
+One `@State` value on the dashboard holds the zoomed tile. Opening a second one
+therefore closes the first by construction, rather than by anybody remembering
+to close it. It is `@State` and not `PanelArrangement` because a zoom must not
+survive a relaunch and must not resize anything stored — the tile comes back the
+size it was.
+
+### A sheet, not a second window
+
+Three answers were on the table: a sheet over the panel, the card expanded in
+place, or a real second window.
+
+A sheet won. It is temporary in a way the other two are not — Escape already
+means dismiss, and there is nothing left over to find later. A second window
+raises questions this app has not had to answer: its own toolbar, its own
+history window, whether it survives a relaunch. Expanding in place keeps the
+toolbar reachable, which the sheet does give up, but it leaves the panel in a
+state that looks like a bug if you walk away from it.
+
+The sheet costs one thing and buys one thing, and the trade is deliberate.
+
+**Nothing stops sampling while the zoom is open.** The buffer is shared, so the
+panel underneath keeps filling and comes back without a gap.
+
+### Three gestures on one tile
+
+A tile now carries a left-drag to reorder, a right-click to copy, and a
+double-click to zoom. They do not fight: `.draggable` claims the press only once
+the pointer moves, the context menu is a separate button, and a count-2 tap
+gesture leaves both alone. This is checked by running the app, not by a test —
+gesture conflicts do not show up in a green suite.
+
+### Sizes
+
+`ZoomLayout` turns the panel's size into the sheet's. The zoom is 86% of the
+panel's width and 82% of its height, bounded to 520×360 at the small end and
+1400×900 at the large one. The margin of panel left showing is what says this is
+a temporary thing over the dashboard rather than a screen you navigated to; the
+upper bound is where a zoom stops being reading a chart and starts being
+stretching one. What is left after the title bar and the card's header is the
+plot, floored at the smallest chart height the panel itself allows.
+
+### Not in scope here
+
+A zoomed chart has room for more than a bigger version of the same picture: more
+x-axis labels, and a longer history window than the panel's. Neither is done —
+the zoom draws the same card the panel does, at a larger size.
+
 ## The auto-ranging dial
 
 A benchmark can pin its dial at a known maximum. A monitor cannot: disk write

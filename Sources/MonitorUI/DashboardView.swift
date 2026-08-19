@@ -25,6 +25,15 @@ public struct DashboardView: View {
     /// Which gap is currently showing an insertion line, if any. One value for
     /// the whole panel: exactly one gap can be the target at a time.
     @State private var dropTarget: DropTarget?
+    /// Which tile is zoomed, if any. One value for the whole panel: zoom is a
+    /// mode the panel is in, not a property a tile carries, so opening a second
+    /// tile closes the first without anybody having to close it.
+    ///
+    /// `@State`, deliberately. A zoom is a view state and must not outlive the
+    /// session or resize anything stored — the tile comes back the size it was.
+    @State private var zoomed: PanelTile?
+    /// The panel's own size, which is what the zoom is a fraction of.
+    @State private var panelSize = CGSize.zero
 
     /// Edge length of one dial, and so the height of the gauge wall.
     ///
@@ -80,9 +89,69 @@ public struct DashboardView: View {
             .padding(Theme.Layout.pagePadding)
         }
         .background(Theme.background)
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: PanelSizeKey.self, value: proxy.size)
+            }
+        )
+        .onPreferenceChange(PanelSizeKey.self) { panelSize = $0 }
         .toolbar { toolbar }
         .onAppear { model.start() }
         .onDisappear { model.stop() }
+        // A sheet rather than a second window: it is temporary, Escape already
+        // means dismiss, and nothing has to decide what a stray window does on
+        // relaunch. The sampler keeps running underneath.
+        .sheet(item: $zoomed) { tile in
+            zoom(tile)
+        }
+    }
+
+    /// Carries the panel's size up so the zoom can be a fraction of it.
+    private struct PanelSizeKey: PreferenceKey {
+        static let defaultValue = CGSize.zero
+        static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+            let next = nextValue()
+            value = next == .zero ? value : next
+        }
+    }
+
+    // MARK: - Zoom
+
+    /// The zoomed tile, drawn from the model rather than handed over at
+    /// double-click time. A card frozen at the moment it was opened would stop
+    /// updating, which is the opposite of what a bigger chart is for.
+    @ViewBuilder
+    private func zoom(_ tile: PanelTile) -> some View {
+        let size = ZoomLayout.size(panel: panelSize)
+        ZoomFrame(title: zoomTitle(tile), size: size, close: { zoomed = nil }) {
+            switch tile {
+            case let .chart(name):
+                if let group = zoomedGroup(named: name) {
+                    chartCard(group, plotHeight: ZoomLayout.plotHeight(in: size))
+                }
+            case let .gauge(id):
+                let metric = MetricID(id)
+                if let descriptor = model.descriptor(metric) {
+                    let edge = ZoomLayout.dialEdge(in: size)
+                    gaugeTile(metric, descriptor, size: edge)
+                        .frame(width: edge)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        }
+    }
+
+    private func zoomTitle(_ tile: PanelTile) -> String {
+        switch tile {
+        case let .chart(name): name
+        case let .gauge(id):
+            model.descriptor(MetricID(id)).map(gaugeTitle) ?? id
+        }
+    }
+
+    /// The group behind a zoomed card, from either section.
+    private func zoomedGroup(named name: String) -> (name: String, metrics: [MetricID])? {
+        (model.performanceGroups + model.sensorGroups).first { $0.name == name }
     }
 
     // MARK: - Gauges
@@ -121,7 +190,7 @@ public struct DashboardView: View {
         ) {
             ForEach(gaugeMetrics, id: \.self) { metric in
                 if let descriptor = model.descriptor(metric) {
-                    let dial = gaugeTile(metric, descriptor)
+                    let dial = gaugeTile(metric, descriptor, size: gaugeSize)
                     dial
                         .copyable {
                             CSVExport.text(
@@ -133,6 +202,7 @@ public struct DashboardView: View {
                         .reorderable(
                             .gauge(metric.rawValue), target: $dropTarget, onDrop: dropGauge
                         )
+                        .zoomable(.gauge(metric.rawValue), zoomed: $zoomed)
                 }
             }
         }
@@ -221,7 +291,9 @@ public struct DashboardView: View {
     /// A function rather than written inline because the copy needs the same
     /// picture a second time — the tile in the wall carries the drag machinery,
     /// and the copy wants only the dial.
-    private func gaugeTile(_ metric: MetricID, _ descriptor: MetricDescriptor) -> some View {
+    private func gaugeTile(
+        _ metric: MetricID, _ descriptor: MetricDescriptor, size: Double
+    ) -> some View {
         VStack(spacing: 2) {
             GaugeView(
                 title: gaugeTitle(descriptor),
@@ -239,7 +311,7 @@ public struct DashboardView: View {
             // face, where at 130pt across "Network Out" ran into the ticks.
             Text(gaugeTitle(descriptor).uppercased())
                 .font(.system(
-                    size: Theme.Layout.gaugeCaptionSize(forGauge: gaugeSize),
+                    size: Theme.Layout.gaugeCaptionSize(forGauge: size),
                     weight: .medium,
                     design: .rounded
                 ))
@@ -283,17 +355,8 @@ public struct DashboardView: View {
                 // let a tick land in between and hand back a CSV that does not
                 // match the chart it came from.
                 let series = series(of: group)
-                let card = ChartCard(
-                    title: group.name,
-                    series: series,
-                    window: window,
-                    isUnavailable: group.metrics.allSatisfy(model.unavailable.contains),
-                    plotHeight: model.arrangement.chartHeight,
-                    // The metrics the card is *drawing*, not the group's whole
-                    // membership: switch one direction off and the card stops
-                    // being a pair.
-                    mirror: model.charts.mirror(for: series.map(\.descriptor)),
-                    stacked: model.charts.stack(for: series.map(\.descriptor))
+                let card = chartCard(
+                    group, series: series, plotHeight: model.arrangement.chartHeight
                 )
                 card
                     .copyable {
@@ -304,8 +367,31 @@ public struct DashboardView: View {
                     .reorderable(.chart(group.name), target: $dropTarget) { dragged, on, edge in
                         dropChart(dragged, on: on, edge: edge, in: section)
                     }
+                    .zoomable(.chart(group.name), zoomed: $zoomed)
             }
         }
+    }
+
+    /// One card, at whichever plot height the caller wants — the panel's stored
+    /// height in the grid, and as much of the sheet as is left in the zoom.
+    private func chartCard(
+        _ group: (name: String, metrics: [MetricID]),
+        series: [(descriptor: MetricDescriptor, points: [Sample])]? = nil,
+        plotHeight: Double
+    ) -> ChartCard {
+        let drawn = series ?? self.series(of: group)
+        return ChartCard(
+            title: group.name,
+            series: drawn,
+            window: window,
+            isUnavailable: group.metrics.allSatisfy(model.unavailable.contains),
+            plotHeight: plotHeight,
+            // The metrics the card is *drawing*, not the group's whole
+            // membership: switch one direction off and the card stops being a
+            // pair.
+            mirror: model.charts.mirror(for: drawn.map(\.descriptor)),
+            stacked: model.charts.stack(for: drawn.map(\.descriptor))
+        )
     }
 
     /// The series behind one card, in the order the card draws them.

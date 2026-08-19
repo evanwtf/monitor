@@ -207,6 +207,17 @@ are no component-level AGENTS.md files.
   is the quiet kind of wrong. A series that missed a tick leaves an **empty
   field, never a zero** — same reason a failed source greys a card out instead
   of drawing a flat line.
+- **A tile zooms in a sheet, and the zoom is view state.** Double-click any card
+  or dial for a temporary window over the panel; Escape, Done or another
+  double-click closes it. One `@State` value on `DashboardView` holds it, so
+  opening a second tile closes the first by construction. It must **never** go
+  into `PanelArrangement` — a zoom does not survive a relaunch and does not
+  resize anything stored. Sizes come from `ZoomLayout`, a fraction of the
+  measured panel, bounded at both ends. Sampling does not stop while it is open;
+  the buffer is shared, so the panel underneath comes back without a gap. A tile
+  now carries three gestures — drag to reorder, right-click to copy,
+  double-click to zoom — and that they do not fight is checked by running
+  `swift run monitor`, never by a test.
 - **The layout is chosen per metric, in preferences.** Cmd-, opens a tabbed
   window. Its **Charts** tab holds how cards are *drawn* (mirroring), which is
   a different question from which cards there are. Its **Layout** tab lists
