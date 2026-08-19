@@ -98,6 +98,72 @@ struct SourceTests {
         #expect(value <= Double(source.physicalMemory))
     }
 
+    @Test("the memory slices account for the machine's RAM, and Used does not")
+    func memoryPartsSumToTheWhole() throws {
+        // The claim stacking rests on. If the slices overlapped, the stack
+        // would climb past the top of the card, and if Used were one of them it
+        // would count app, wired and compressed a second time.
+        let source = MemorySource()
+        let batch = try source.read(at: 0)
+        let values = Dictionary(
+            batch.samples.map { ($0.metric, $0.value) }, uniquingKeysWith: { first, _ in first }
+        )
+        let parts = source.descriptors
+            .filter { $0.composition == .part }
+            .compactMap { values[$0.id] }
+        #expect(parts.count >= 2)
+
+        let total = Double(source.physicalMemory)
+        let summed = parts.reduce(0, +)
+        // Not exact: macOS keeps page classes this does not name, so the slices
+        // account for most of the RAM rather than all of it. What matters is
+        // that they never exceed it, which overlapping slices would.
+        #expect(summed <= total * 1.02, "the slices overlap; a stack would overflow")
+        #expect(summed >= total * 0.85, "the slices leave too much unaccounted for")
+
+        let used = try #require(values[MemorySource.used])
+        #expect(used < summed, "Used is a sum of slices, not a slice")
+    }
+
+    @Test("CPU Total is exactly its slices")
+    func cpuPartsSumToTotal() throws {
+        let source = CPUSource()
+        _ = try source.read(at: 0)
+        Thread.sleep(forTimeInterval: 0.2)
+        let samples = try source.read(at: 0.2).samples
+        let values = Dictionary(
+            samples.map { ($0.metric, $0.value) }, uniquingKeysWith: { first, _ in first }
+        )
+        let user = try #require(values[CPUSource.user])
+        let system = try #require(values[CPUSource.system])
+        let total = try #require(values[CPUSource.total])
+        #expect(abs(user + system - total) < 0.0001)
+    }
+
+    @Test("a group that declares slices declares at least two of them")
+    func slicesComeInTwos() {
+        // One band is an area chart with extra steps, so a lone `.part` is a
+        // declaration somebody half finished.
+        let sliced = SourceRegistry.allDescriptors.filter { $0.composition == .part }
+        #expect(!sliced.isEmpty)
+        for group in Set(sliced.map(\.group)) {
+            let members = sliced.filter { $0.group == group }
+            #expect(members.count >= 2, "\(group) declares one slice and no other")
+        }
+    }
+
+    @Test("nothing is both a slice and a direction")
+    func compositionAndDirectionAreExclusive() {
+        // Two directions of a flow are not slices of a whole, and a band drawn
+        // below a baseline would be nonsense.
+        for descriptor in SourceRegistry.allDescriptors {
+            #expect(
+                descriptor.direction == nil || descriptor.composition == nil,
+                "\(descriptor.id.rawValue) claims to be both"
+            )
+        }
+    }
+
     @Test("disk counters differentiate into non-negative rates")
     func disk() throws {
         let source = DiskSource()

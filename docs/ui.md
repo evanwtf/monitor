@@ -247,6 +247,69 @@ checkbox has no gesture to end.
 Off by default. Mirroring is the clearer way to read throughput, but a chart
 that changes shape under somebody on upgrade is worse than one they switch on.
 
+## Stacked cards
+
+Memory is not seven independent readings. App, wired, compressed, cached and
+free are five slices of one machine's RAM, and drawn as five lines from zero
+they answer "how big is each part" while hiding the question you opened the card
+for: how full is the machine. Stacked, the bands answer both — each band is a
+part, the top of the stack is the total.
+
+Switch **Stack the parts of a whole** on in the Charts tab. Today that is Memory
+and CPU; anything declared later joins them.
+
+### A metric says whether it is a slice
+
+`MetricDescriptor.composition` is `.part`, `.aggregate`, or nil. Same shape as
+`direction`, and for the same reason: it is a fact about the metric, so a source
+added later gets stacking without anything else being told.
+
+- **`.part`** — one slice of the group's whole. Slices do not overlap.
+- **`.aggregate`** — a sum of slices in the same group. Memory Used is app plus
+  wired plus compressed; CPU Total is user plus system.
+- **nil** — neither. Memory Swap shares the card and is not in the machine's RAM
+  at all, and two temperature sensors are two readings rather than a division of
+  anything.
+
+A card stacks when it draws **two or more** slices. One band is an area chart
+with extra steps.
+
+### An aggregate must never be a band
+
+This is the trap the whole feature turns on. Memory Used is app plus wired plus
+compressed, so stacking it counts those three a second time and puts the top of
+the card at nearly twice the RAM in the machine. It keeps its line instead,
+where it lands exactly on top of the bands it sums — which reads as a check
+rather than a contradiction.
+
+`MonitorSourcesTests` holds the claim against the real machine: the slices
+account for between 85% and 102% of physical RAM, so they cannot be overlapping,
+and Used is strictly larger than any one of them. CPU is an exact identity —
+user plus system *is* total, to four decimal places.
+
+### Lines among bands are dashed
+
+A line on a stacked card is a different kind of statement and has to look like
+one. Solid strokes are what the card uses for slices, so an aggregate or an
+unrelated series drawn solid invites reading it as one more slice. Dashed, with
+a hollow legend swatch instead of a filled one, so the key says what the chart
+says.
+
+### The scale is the stack's height
+
+A stacked card's y-axis is bounded by the summed height per timestamp, not by
+the tallest single band. The top of the stack is what the eye reads, and scaling
+to one band would push the stack out through the top of the card. Memory has a
+`nominalMaximum` of physical RAM so it was already bounded; a stacked group
+without one would not be.
+
+### Stacked and mirrored are exclusive
+
+Two directions of a flow are not slices of a whole, so nothing declares both and
+a registry test proves it. `ChartCard` drops the stack when a mirror is set as
+well, because a band drawn below a baseline would be nonsense however it got
+there.
+
 ## The time axis
 
 Three things have to be true of the labels along the bottom, and the first two

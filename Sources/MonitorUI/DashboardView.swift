@@ -292,7 +292,8 @@ public struct DashboardView: View {
                     // The metrics the card is *drawing*, not the group's whole
                     // membership: switch one direction off and the card stops
                     // being a pair.
-                    mirror: model.charts.mirror(for: series.map(\.descriptor))
+                    mirror: model.charts.mirror(for: series.map(\.descriptor)),
+                    stacked: model.charts.stack(for: series.map(\.descriptor))
                 )
                 card
                     .copyable {

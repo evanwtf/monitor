@@ -34,27 +34,27 @@ public final class MemorySource: MetricSource, @unchecked Sendable {
         return [
             MetricDescriptor(
                 id: Self.used, name: "Used", group: "Memory", unit: .bytes,
-                nominalMaximum: ceiling
+                nominalMaximum: ceiling, composition: .aggregate
             ),
             MetricDescriptor(
                 id: Self.app, name: "App", group: "Memory", unit: .bytes,
-                nominalMaximum: ceiling
+                nominalMaximum: ceiling, composition: .part
             ),
             MetricDescriptor(
                 id: Self.wired, name: "Wired", group: "Memory", unit: .bytes,
-                nominalMaximum: ceiling
+                nominalMaximum: ceiling, composition: .part
             ),
             MetricDescriptor(
                 id: Self.compressed, name: "Compressed", group: "Memory", unit: .bytes,
-                nominalMaximum: ceiling
+                nominalMaximum: ceiling, composition: .part
             ),
             MetricDescriptor(
                 id: Self.cached, name: "Cached", group: "Memory", unit: .bytes,
-                nominalMaximum: ceiling
+                nominalMaximum: ceiling, composition: .part
             ),
             MetricDescriptor(
                 id: Self.free, name: "Free", group: "Memory", unit: .bytes,
-                nominalMaximum: ceiling
+                nominalMaximum: ceiling, composition: .part
             ),
             MetricDescriptor(id: Self.swapUsed, name: "Swap", group: "Memory", unit: .bytes),
             MetricDescriptor(
