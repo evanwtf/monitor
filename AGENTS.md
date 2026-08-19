@@ -64,8 +64,8 @@ look at it in the app.
 Sources/
   MonitorCore/     metric model, ring buffer, downsampling, gauge auto-ranging,
                    seven-segment digit mapping, formatting, the sampling clock,
-                   the layout, arrangement and sampling preference models,
-                   CSV export. No macOS APIs — so all of it is testable
+                   the layout, arrangement, chart and sampling preference
+                   models, CSV export. No macOS APIs — so all of it is testable
                    without a machine to read.
   MonitorSources/  the readers: CPU, memory, disk, network, GPU, SMC sensors
                    (temperature, fans, power), and the registry that lists them.
@@ -148,6 +148,22 @@ are no component-level AGENTS.md files.
   freely during a gesture, then call `commitArrangement()`. Adding a `didSet`
   that saves would turn one decision into hundreds of writes — the thing
   `docs/storage.md` exists to prevent.
+- **Paired charts can be mirrored, and only the picture flips.** Network in
+  and disk read draw above the baseline, out and written below it, when
+  **Mirror paired charts** is on in the Charts tab. The stored sample stays
+  positive — a rate is never negative — so `ChartCard.plotted` negates at draw
+  time and the legend, the formatter, the gauges and the CSV export are
+  untouched. Axis labels are magnitudes on both sides. One symmetric scale, not
+  one per direction: the two share a card in order to be read against each
+  other. `ChartMirror.pairs` (in `MonitorCore`) is the table, deliberately not a
+  field on `MetricDescriptor` — a descriptor says what a metric *is* and is
+  declared by the source that reads it, and "this one points down" is a
+  statement about a picture. A card mirrors only when it draws **both halves**,
+  so switching one direction off returns it to drawing upward rather than
+  leaving a trace under an empty top half. `ChartPreferences` is its own type
+  and key beside `LayoutPreferences`: **which cards exist** versus **how one is
+  drawn**. Off by default, because a chart that changes shape on upgrade is
+  worse than one somebody switches on.
 - **A card can be copied, and the copy is not what the panel shows.**
   Right-click any tile for **Copy Image** (the tile rendered on its own with
   `ImageRenderer`, not captured from the window) and **Copy Data** (the visible
@@ -161,7 +177,9 @@ are no component-level AGENTS.md files.
   field, never a zero** — same reason a failed source greys a card out instead
   of drawing a flat line.
 - **The layout is chosen per metric, in preferences.** Cmd-, opens a tabbed
-  window. Its **Layout** tab lists every metric with a Gauge checkbox and a
+  window. Its **Charts** tab holds how cards are *drawn* (mirroring), which is
+  a different question from which cards there are. Its **Layout** tab lists
+  every metric with a Gauge checkbox and a
   Chart checkbox, grouped into collapsible sections whose headings carry the
   same two checkboxes for the whole group. The two columns are not symmetrical:
   **a gauge is per metric, a chart is per group.** Ticking Network In and Network Out gives two dials and *one*

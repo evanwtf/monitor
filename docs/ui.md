@@ -173,6 +173,62 @@ not — the app still writes no *history* to disk and still does not link
 `MonitorStore`. The argument in `storage.md` is about a sample every half second
 forever, not about a checkbox written when somebody ticks it.
 
+## Mirrored in/out charts
+
+Network In and Network Out share a card so they can be read against each other,
+and drawn both upward from zero they overlap: at a glance you cannot tell which
+trace is which without reading the legend.
+
+Switch **Mirror paired charts** on in the Charts tab and one direction goes
+above the baseline, the other below. Zero moves to the middle of the plot.
+Upload and download become two shapes that cannot be confused, and the shape of
+a transfer — a burst up, a long tail down — is readable without reading the key.
+
+Two cards are pairs: Network (in up, out down) and Disk (read up, written down).
+In above out and read above written, because the first is the one that arrives,
+and download above upload is how every meter of this kind has drawn it since
+modem lights.
+
+### Only the picture flips
+
+The sample in the buffer stays positive. A rate is never negative, and a
+negative must not reach the formatter, the gauges, or the CSV export — `plotted`
+in `ChartCard` negates at draw time and nothing else knows. The axis labels read
+as magnitudes on both sides too: below the line is a *direction*, not a negative
+quantity, and `-50 MB/s` is not a rate anything can achieve.
+
+### One shared scale
+
+The domain is symmetric about zero, and its half-range is the larger of the two
+peaks. So a card where download dwarfs upload looks nearly flat on the quiet
+side. That is honest, and it is the whole reason the two share a card: a scale
+per direction would make a 30 kbit/s upload and a 300 Mbit/s download draw the
+same shape.
+
+### Both halves or neither
+
+`ChartMirror.pair(for:)` returns a pair only when the card draws exactly the two
+metrics of one. Switch Network Out off in the Layout tab and the card stops
+mirroring rather than leaving a single trace hanging below an empty top half,
+which reads as a bug rather than as a choice.
+
+### Where the table lives
+
+`ChartMirror.pairs` in `MonitorCore`, not a field on `MetricDescriptor`. A
+descriptor says what a metric *is*, and it is declared by the source that reads
+it; "this one points down" is a statement about a picture, and a disk reader has
+no business making it. A separate table also means a source can be added without
+deciding whether it has an opposite.
+
+`ChartPreferences` is its own type beside `LayoutPreferences` for the matching
+reason: **`LayoutPreferences` is which cards exist, `ChartPreferences` is how one
+is drawn.** Separate keys, so a value a later version writes costs one and not
+both. It saves on change, like the layout and unlike the arrangement — a
+checkbox has no gesture to end.
+
+Off by default. Mirroring is the clearer way to read throughput, but a chart
+that changes shape under somebody on upgrade is worse than one they switch on.
+
 ## Copying a card
 
 Right-click any tile — a chart card or a dial — for two items.

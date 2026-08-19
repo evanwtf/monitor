@@ -116,3 +116,34 @@ enum PanelArrangementStore {
         defaults.set(data, forKey: key)
     }
 }
+
+/// How the charts are drawn, kept beside the layout in the same domain.
+///
+/// Its own key, for the same reason the arrangement has one: `LayoutPreferences`
+/// is which cards exist and this is how one of them is drawn. A value a later
+/// version writes costs one of them and not both.
+enum ChartPreferencesStore {
+    static let key = "chart.preferences"
+
+    static func load(from defaults: UserDefaults = LayoutPreferencesStore.suite)
+        -> ChartPreferences
+    {
+        guard let data = defaults.data(forKey: key),
+              let stored = try? JSONDecoder().decode(ChartPreferences.self, from: data)
+        else {
+            return .default
+        }
+        return stored
+    }
+
+    static func save(
+        _ preferences: ChartPreferences,
+        to defaults: UserDefaults = LayoutPreferencesStore.suite
+    ) {
+        guard let data = try? JSONEncoder().encode(preferences) else {
+            log.error("Could not encode chart preferences")
+            return
+        }
+        defaults.set(data, forKey: key)
+    }
+}

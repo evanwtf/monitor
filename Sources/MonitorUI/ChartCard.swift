@@ -17,19 +17,27 @@ public struct ChartCard: View {
     /// card whose legend wraps to three lines grows rather than squeezing the
     /// chart out of it.
     public var plotHeight: Double = Theme.Layout.chartMinHeight
+    /// The two opposite directions this card draws, when it is drawing them
+    /// mirrored. Nil is the ordinary card: every series upward from zero.
+    ///
+    /// Passed in rather than worked out here, because whether to mirror is a
+    /// preference and a card does not read preferences.
+    public var mirror: MetricPair?
 
     public init(
         title: String,
         series: [(descriptor: MetricDescriptor, points: [Sample])],
         window: TimeInterval,
         isUnavailable: Bool = false,
-        plotHeight: Double = Theme.Layout.chartMinHeight
+        plotHeight: Double = Theme.Layout.chartMinHeight,
+        mirror: MetricPair? = nil
     ) {
         self.title = title
         self.series = series
         self.window = window
         self.isUnavailable = isUnavailable
         self.plotHeight = plotHeight
+        self.mirror = mirror
     }
 
     public var body: some View {
@@ -177,11 +185,21 @@ public struct ChartCard: View {
         // that the compiler warns about it.
         let entries = visible
         return Chart {
+            // The baseline, drawn only when there is one to draw. On an
+            // ordinary card zero is the bottom of the plot and the axis already
+            // marks it; on a mirrored card it is the line the two directions
+            // are read against, and it has to be visible as more than one grid
+            // line among several.
+            if mirror != nil {
+                RuleMark(y: .value("Zero", 0))
+                    .foregroundStyle(Theme.panelEdge)
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+            }
             ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
                 ForEach(entry.points, id: \.timestamp) { sample in
                     LineMark(
                         x: .value("Time", Date(timeIntervalSince1970: sample.timestamp)),
-                        y: .value("Value", sample.value)
+                        y: .value("Value", plotted(sample.value, of: entry.descriptor))
                     )
                     .foregroundStyle(Theme.seriesColor(index))
                     .interpolationMethod(.monotone)
@@ -205,7 +223,10 @@ public struct ChartCard: View {
                     if let value = mark.as(Double.self),
                        let unit = series.first?.descriptor.unit
                     {
-                        Text(Format.axisLabel(value, unit: unit))
+                        // The magnitude, on both sides of the baseline. Below
+                        // the line is a direction, not a negative quantity, and
+                        // "-50 MB/s" is not a rate anything can achieve.
+                        Text(Format.axisLabel(abs(value), unit: unit))
                             .font(.system(size: Theme.Layout.axisLabel, design: .rounded))
                             .foregroundStyle(Theme.label)
                     }
@@ -238,15 +259,34 @@ public struct ChartCard: View {
     /// A fraction metric is pinned to 0...1 so a quiet CPU draws a flat line at
     /// the bottom. Auto-scaling it would magnify 2% noise into a dramatic chart
     /// — the single most common way a system monitor misleads.
+    /// Where a sample is drawn, which is not what it is worth.
+    ///
+    /// Only the picture flips. The sample in the buffer stays positive — a rate
+    /// is never negative — so the legend, the formatter, the gauges and the CSV
+    /// export all keep reading the number the source produced.
+    private func plotted(_ value: Double, of descriptor: MetricDescriptor) -> Double {
+        descriptor.id == mirror?.down ? -value : value
+    }
+
     private var yDomain: ClosedRange<Double> {
+        let top = upperBound
+        // Symmetric about zero, so a rate reads the same distance from the
+        // baseline whichever way it points. One shared scale, not one per
+        // direction: the whole reason the two share a card is to be read
+        // against each other, and a card where download dwarfs upload will look
+        // nearly flat on the quiet side. That is the honest picture.
+        return mirror == nil ? 0...top : -top...top
+    }
+
+    private var upperBound: Double {
         if let descriptor = series.first?.descriptor {
-            if descriptor.unit == .fraction { return 0...1 }
-            if let maximum = descriptor.nominalMaximum { return 0...maximum }
+            if descriptor.unit == .fraction { return 1 }
+            if let maximum = descriptor.nominalMaximum { return maximum }
         }
         // Scaled to what is on screen, not to the whole buffer. Otherwise a
         // spike eight minutes off the left of a two-minute window flattens
         // everything you can actually see.
         let peak = visible.flatMap { $0.points.map(\.value) }.max() ?? 1
-        return 0...max(peak * 1.15, .leastNonzeroMagnitude)
+        return max(peak * 1.15, .leastNonzeroMagnitude)
     }
 }

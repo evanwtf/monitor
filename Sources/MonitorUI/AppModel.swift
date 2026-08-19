@@ -30,6 +30,17 @@ public final class AppModel {
         }
     }
 
+    /// How the charts are drawn, as opposed to which ones there are.
+    ///
+    /// Saved on change like `layout` and unlike `arrangement`: it is a
+    /// checkbox, so it changes once when somebody clicks it.
+    public var charts: ChartPreferences {
+        didSet {
+            guard charts != oldValue else { return }
+            ChartPreferencesStore.save(charts, to: defaults)
+        }
+    }
+
     /// Where every tile sits and how big the tiles are.
     ///
     /// Separate from `layout` because the two answer different questions: that
@@ -116,6 +127,7 @@ public final class AppModel {
         sampler = Sampler(sources: sources, sinks: [], interval: stored.performance)
         layout = LayoutPreferencesStore.load(for: all, from: defaults)
         arrangement = PanelArrangementStore.load(for: all, from: defaults)
+        charts = ChartPreferencesStore.load(from: defaults)
 
         // A scale for every metric, not only the ones a dial shows today. Any
         // metric can be given a dial in preferences, and auto-ranging needs
