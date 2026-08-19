@@ -253,6 +253,13 @@ are no component-level AGENTS.md files.
     pull request says otherwise, so the size of a release is decided in review
     rather than remembered at merge time. Labels rather than Conventional
     Commit prefixes, because the commit style here is prose.
+    **The label is read from the number in the merge commit's subject**, not by
+    asking GitHub which pull request a commit came from — that association is
+    not reliably present when this runs, and an empty answer is
+    indistinguishable from an unlabelled merge. The lookup has no `|| true`
+    either: it must fail loudly rather than fall through to the default.
+    `permissions:` must keep `pull-requests: read`, since the block sets every
+    scope it does not name to `none`.
   - **Two ways to publish nothing:** a `release:skip` label, or a merge that
     touched only `docs/`, `.github/` and top-level `*.md`. A merge touching
     docs *and* code still ships.
@@ -403,6 +410,12 @@ are no component-level AGENTS.md files.
 - **GPU card is greyed out**: this macOS version does not publish the
   `PerformanceStatistics` keys the source knows about. Add the new spelling to
   the candidate list in `GPUSource`.
+- **A merge shipped a patch version when it was labelled `release:minor`**:
+  the label lookup came back empty. Check the "Version" step's log — it now
+  prints the pull request number, the labels it found and the bump it chose. A
+  number of `none` on a squash merge means the subject did not end in `(#N)`;
+  empty labels on a real number means the token could not read them, so check
+  `pull-requests: read` is still in the workflow's `permissions:`.
 - **A pull request reports no CI**: it came from a fork, and the jobs skip fork
   pull requests on purpose. Re-run from a branch in this repository.
 - **A pull request reports no CI and did not come from a fork**: its commit
