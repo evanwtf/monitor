@@ -488,23 +488,48 @@ public struct DashboardView: View {
     /// very often not the copy just built. The question "am I looking at the
     /// change I just made?" should not cost two clicks to answer.
     ///
-    /// Drawn in `Theme.readout` rather than left to the secondary style the
-    /// title bar would give it. A stamp nobody can read at a glance is a stamp
-    /// nobody checks, which is the same failure as not having one.
+    /// **White on black, in the system font.** Not the panel's palette and not
+    /// the monospaced face the cards use: this is the one thing in the window
+    /// that is not a reading. Everything else on screen is a measurement of the
+    /// machine, styled to be scanned; the stamp is a label on the photograph,
+    /// and its job is to survive being screenshotted and read back later.
+    ///
+    /// Which is also why it is black rather than `Theme.panel`, and not left to
+    /// the title bar's own styling. The first version borrowed the toolbar's
+    /// glass and came out as dark text on a light pill — the lowest contrast
+    /// anywhere in the window, on the one element whose entire purpose is to
+    /// still be legible in a PNG somebody opens next month.
+    ///
+    /// `fixedSize` so it is never truncated. A commit clipped to
+    /// `v1.4.0-8-gc61738cf · Aug 28 09:3` is worse than no stamp: it looks
+    /// complete.
     private var buildStamp: some View {
         Text(BuildStamp.label)
-            .font(.system(size: 10, design: .monospaced))
-            .foregroundStyle(Theme.readout)
+            .font(.body)
+            .foregroundStyle(.white)
             .lineLimit(1)
             .fixedSize()
+            .padding(.horizontal, 9)
+            .padding(.vertical, 3)
+            .background(.black, in: Capsule())
             .help("The commit this build came from, and when it was built")
             .accessibilityLabel("Build \(BuildStamp.label)")
     }
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            buildStamp
+        // macOS 26 wraps every toolbar item in a shared capsule, which put the
+        // stamp in the same light pill as the controls opposite — dark text on
+        // light glass, and clipped where the capsule ended. The stamp is not a
+        // control and should not dress as one, so on 26 it opts out and draws
+        // its own background. Earlier releases add no capsule and need no
+        // opt-out, which is why this is additive rather than conditional
+        // styling.
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .navigation) { buildStamp }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .navigation) { buildStamp }
         }
         ToolbarItem {
             Picker("History", selection: $window) {

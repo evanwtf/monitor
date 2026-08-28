@@ -953,9 +953,23 @@ because of how the app gets used — a monitor is left running for days, and the
 copy on screen is very often not the copy just built. "Am I looking at the
 change I just made?" should not cost two clicks.
 
-Drawn in `Theme.readout`, not the secondary style the title bar would otherwise
-give it. A stamp nobody can read at a glance is a stamp nobody checks, which is
-the same failure as not having one.
+**White on black, in the system font** — not the panel's palette, and not the
+monospaced face the cards use. This is the one thing in the window that is not a
+reading. Everything else is a measurement of the machine, styled to be scanned;
+the stamp is a label on the photograph, and its job is to survive being
+screenshotted and read back later.
+
+The first version left it to the title bar's own styling and came out as dark
+text on a light glass pill — the lowest contrast anywhere in the window, on the
+element whose whole purpose is to still be legible in a PNG somebody opens next
+month. macOS 26 wraps every toolbar item in that shared capsule, so the item
+opts out with `sharedBackgroundVisibility(.hidden)` and paints its own. Earlier
+releases add no capsule and need no opt-out, which is why the call is gated and
+additive rather than two sets of styling.
+
+`fixedSize`, so it is never truncated. A commit clipped to
+`v1.4.0-8-gc61738cf · Aug 28 09:3` is worse than no stamp at all: it looks
+complete.
 
 ### Two facts, two sources
 

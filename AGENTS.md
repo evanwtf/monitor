@@ -334,9 +334,15 @@ are no component-level AGENTS.md files.
   writes into the bundle, not the archive, so the uploaded copy is unstapled
   until it is made again. `docs/signing.md` is the setup.
 - **The title bar says which build this is.** `BuildStamp.label` — the commit
-  and when it was made — beside the window title, drawn in `Theme.readout`
-  rather than the title bar's secondary style, because a stamp nobody can read
-  at a glance is one nobody checks. **The two halves are sourced differently on
+  and when it was made — beside the window title, **white on black in the system
+  font**, deliberately not the panel's palette or the cards' monospaced face.
+  It is the one thing in the window that is not a reading: everything else is a
+  measurement styled to be scanned, and this is a label on the photograph, there
+  to survive being screenshotted and read back later. macOS 26 wraps toolbar
+  items in a shared glass capsule, which made it dark-on-light and clipped it,
+  so the item opts out with `sharedBackgroundVisibility(.hidden)` (gated to 26,
+  additive — earlier releases add no capsule) and paints its own. `fixedSize`,
+  because a commit truncated to look complete is worse than no stamp. **The two halves are sourced differently on
   purpose.** The commit is stamped at build time by the `StampCommit` prebuild
   plugin (`git describe --tags --always --dirty`), because a running program has
   no other way to know it and a checked-in constant is one somebody has to
