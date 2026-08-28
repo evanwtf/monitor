@@ -405,6 +405,12 @@ are no component-level AGENTS.md files.
   the split buys none of the review value it looks like it buys. What it costs
   is real: a squash-merge and a **release** each, for one change. Keep the
   separable history in the commits, where it is free.
+  **This matters most for UI work, which cannot be reviewed piecemeal.** There
+  is one window. A change to a card, the axis under it and the title bar above
+  it are seen together or not at all, and the only useful question — does this
+  read better — can only be asked of the whole screen. Three pull requests
+  against one screenshot is three views of a thing nobody can look at
+  separately.
   Split only when the parts are genuinely independent of each other and could
   land in either order.
 * Make minimal, focused changes; avoid broad refactors unless requested.
