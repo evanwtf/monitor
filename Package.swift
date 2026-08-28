@@ -39,7 +39,12 @@ let package = Package(
         .executable(name: "monitorctl", targets: ["monitorctl"]),
     ],
     targets: [
-        .target(name: "MonitorCore"),
+        .target(name: "MonitorCore", plugins: ["StampCommit"]),
+        // A prebuild plugin, so the commit in the title bar cannot go stale the
+        // way a checked-in constant or a manual step would. It rewrites its
+        // output only when the hash changes, which is what keeps `swift run`
+        // from recompiling MonitorCore every time.
+        .plugin(name: "StampCommit", capability: .buildTool()),
         .target(name: "MonitorSources", dependencies: ["MonitorCore"]),
         .target(name: "MonitorStore", dependencies: ["MonitorCore"]),
         // Note the absence of MonitorStore in the next three targets. That is

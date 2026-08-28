@@ -916,3 +916,39 @@ One needle colour for every gauge. A needle that changes colour per metric turns
 a dashboard into a fruit salad and stops the eye reading position, which is the
 only thing a needle is for. Chart series colours avoid red/green pairs on the
 same chart.
+
+## Which build is this?
+
+The title bar carries the commit and the build time, next to the window's name:
+`v1.4.0-4-ga8e8631 · Aug 28 09:52`. It is there rather than in the About panel
+because of how the app gets used — a monitor is left running for days, and the
+copy on screen is very often not the copy just built. "Am I looking at the
+change I just made?" should not cost two clicks.
+
+Drawn in `Theme.readout`, not the secondary style the title bar would otherwise
+give it. A stamp nobody can read at a glance is a stamp nobody checks, which is
+the same failure as not having one.
+
+### Two facts, two sources
+
+**The commit is stamped at build time.** The `StampCommit` plugin runs
+`git describe --tags --always --dirty --abbrev=8` before every build and writes
+`CommitStamp`. It has to be captured then: a running program has no other way to
+know which commit it came from, and a checked-in constant is something somebody
+has to remember to update — which means a title bar that eventually lies.
+
+`describe` rather than a bare hash, for the `-dirty`. A build with uncommitted
+changes is not the commit it names, and saying so is the difference between a
+stamp you can trust and one you have to double-check.
+
+**The build time is read at runtime**, from the executable's own modification
+date. It could have been stamped alongside the commit, and that would have been
+worse: the build time changes on every build by definition, so writing it into a
+source file would recompile `MonitorCore` every time and cost the fast
+`swift run` loop — for a fact the filesystem already knows. The plugin writes
+its own output only when the hash has actually changed, for the same reason.
+
+Where either is unavailable it drops out rather than being filled in: no git
+gives `unknown`, and an unreadable executable date leaves the commit on its own.
+Half an answer beats a stand-in that looks like the other half — the same rule
+the sources follow when a read fails.

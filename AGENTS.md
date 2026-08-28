@@ -48,7 +48,7 @@ swift run monitorctl list        # every source and the metrics it declares
 swift run monitorctl read        # read every metric once
 swift run monitorctl watch --source disk --interval 0.5
 swift run monitorctl watch --json --count 5        # machine-readable, bounded
-swiftformat Sources Tests --lint --cache ignore    # CI lint gate
+swiftformat Sources Tests Plugins --lint --cache ignore   # CI lint gate
 Scripts/make-app.sh [dest]       # wrap the release binary in monitor.app
 Scripts/make-icon.swift out.icns # draw the app icon (make-app.sh calls this)
 Scripts/notarize.sh app zip      # notarize a Developer ID build and staple it
@@ -79,6 +79,9 @@ Sources/
                    linked into the app — see "Guardrails" below.
   monitor/         the app target (@main SwiftUI App) and its AppDelegate
   monitorctl/      headless CLI harness
+Plugins/
+  StampCommit/     prebuild plugin: writes the commit into a Swift constant
+                   before every build, so the title bar cannot go stale
 Scripts/           make-app.sh, which builds monitor.app, make-icon.swift,
                    which draws its icon, and notarize.sh, which notarizes and
                    staples a Developer ID build
@@ -322,6 +325,21 @@ are no component-level AGENTS.md files.
   **`notarize.sh` rebuilds the zip after stapling** — `stapler`
   writes into the bundle, not the archive, so the uploaded copy is unstapled
   until it is made again. `docs/signing.md` is the setup.
+- **The title bar says which build this is.** `BuildStamp.label` — the commit
+  and when it was made — beside the window title, drawn in `Theme.readout`
+  rather than the title bar's secondary style, because a stamp nobody can read
+  at a glance is one nobody checks. **The two halves are sourced differently on
+  purpose.** The commit is stamped at build time by the `StampCommit` prebuild
+  plugin (`git describe --tags --always --dirty`), because a running program has
+  no other way to know it and a checked-in constant is one somebody has to
+  remember to update. The build time is read at *runtime* from the executable's
+  own modification date — stamping it too would rewrite a source file on every
+  build and recompile `MonitorCore` every time, which is the fast `swift run`
+  loop gone for a fact the filesystem already has. **Keep `-dirty`**: a build
+  with uncommitted changes is not the commit it names. The plugin writes its
+  output only when the hash changes, for the same incremental-build reason, and
+  falls back to `unknown` where there is no git — a source tarball, say. Lint
+  covers `Plugins` too: `swiftformat Sources Tests Plugins`.
 - **The version lives in `MonitorCore/Version.swift`.** The About panel reads
   it at runtime and `make-app.sh` greps that file when it writes `Info.plist`,
   so a bundled build and `swift run monitor` cannot claim different versions.
@@ -375,7 +393,7 @@ are no component-level AGENTS.md files.
 
 ### Always
 
-- Run `swift build && swift test` and `swiftformat Sources Tests --lint --cache
+- Run `swift build && swift test` and `swiftformat Sources Tests Plugins --lint --cache
   ignore` before considering work done. Both are CI gates.
 - Keep `MonitorCore` free of macOS system APIs. It is the part that can be
   tested on any machine in any state, and that is worth protecting.

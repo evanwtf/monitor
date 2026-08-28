@@ -481,8 +481,31 @@ public struct DashboardView: View {
 
     // MARK: - Toolbar
 
+    /// Which build this is, beside the window's title.
+    ///
+    /// In the title bar rather than the About panel because of how this app
+    /// gets used: a monitor is left running for days, and the copy on screen is
+    /// very often not the copy just built. The question "am I looking at the
+    /// change I just made?" should not cost two clicks to answer.
+    ///
+    /// Drawn in `Theme.readout` rather than left to the secondary style the
+    /// title bar would give it. A stamp nobody can read at a glance is a stamp
+    /// nobody checks, which is the same failure as not having one.
+    private var buildStamp: some View {
+        Text(BuildStamp.label)
+            .font(.system(size: 10, design: .monospaced))
+            .foregroundStyle(Theme.readout)
+            .lineLimit(1)
+            .fixedSize()
+            .help("The commit this build came from, and when it was built")
+            .accessibilityLabel("Build \(BuildStamp.label)")
+    }
+
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            buildStamp
+        }
         ToolbarItem {
             Picker("History", selection: $window) {
                 Text("1 min").tag(TimeInterval(60))
