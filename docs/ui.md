@@ -310,6 +310,107 @@ a registry test proves it. `ChartCard` drops the stack when a mirror is set as
 well, because a band drawn below a baseline would be nonsense however it got
 there.
 
+## Totals for the window
+
+**Show totals for the window** in the Charts tab adds a second number to every
+legend entry: how much moved, beside how fast it is moving. **On by default**,
+unlike mirroring and stacking beside it. It shipped off, to match them, and the
+reaction to the finished feature was "I don't see it". The difference that
+argument missed: those two change what the picture *means*, so a reader who
+never asked for them deserves the chart they had — a total only adds a number
+beside one already there, and a number nobody can find is worth less than a
+header that reflows.
+
+The gap it fills: a dial answers "how hard is this working right now" and a
+chart answers "what has been happening". Neither answers "how much did that
+transfer cost me", which is the question you have while watching a sync run.
+
+### The arithmetic is already in the buffer
+
+A rate sample **is** the mean over the gap before it — `RateTracker` produces
+`Δcounter / Δt` — so multiplying each sample by the interval it measures and
+summing telescopes back to exactly the counter delta. `WindowTotal`, in
+`MonitorCore` beside `CSVExport`, is that sum. No counter history is kept
+anywhere, no source changes, and nothing is read that the ring buffer does not
+already hold, so this stays inside the rule that nothing is written to disk.
+
+`ChartCard` totals `series` rather than `visible`: the sum needs the sample just
+*before* the window's left edge to measure the partial interval that straddles
+it, and `visible` has already thrown that one away.
+
+### It covers what the chart draws
+
+The window is the History picker's, so the number and the picture answer the
+same question and one control changes both. Ten minutes remains the ceiling,
+because that is what the buffer holds.
+
+### It says the span it really has
+
+`WindowTotal.Result` carries `covered` beside `value`. Ten seconds after launch
+the buffer holds ten seconds, and "2 min" over a number covering a twelfth of
+that is the quiet kind of wrong — it looks exactly like the right answer, so
+nobody checks it. The span sits beside the card's title, and it reads the
+window only when the card really has it, within one `totalGap` of tolerance: a
+card is never going to cover its window to the microsecond, and "119 s" beside
+a picker reading "2 min" looks like a fault rather than like precision.
+
+Stated once beside the title rather than after each entry. The picker is
+global, so repeating "/ 2 min" down a legend is four copies of one fact, in the
+part of the card with the least room to spare. An entry covering materially
+less than the card's stated span — one source failed for a stretch while its
+neighbour kept reading — is dimmed. The ordinary case spends no ink saying it
+is ordinary.
+
+### A card with totals gets a table, not a wrapped row
+
+The legend has two shapes, because the cards do. A card of levels — Memory's
+seven slices, five temperature sensors — has nothing to total and keeps
+`FlowLayout`, which spends card height only when the entries genuinely do not
+fit across. A card of rates has a second number per series, and numbers in a
+wrapped row do not line up: the first version put the totals at four different
+left edges down the same card.
+
+So those cards draw a small `Grid` instead: swatch, name, rate, total, with the
+totals column **headed and right-justified**. Right-justified because these are
+magnitudes, and a magnitude is read by where its last digit sits — `104 MB` over
+`48 MB` aligned on the left puts the hundreds above the tens and hides the
+difference the column exists to show. Headed because a second bare number beside
+a rate does not say what it is: the span beside the title says *how long*, and
+the heading says *of what*.
+
+The table always goes under the title, never beside it. `ViewThatFits` is the
+right question for a wrapping row and the wrong one for a column of figures —
+pushed to the right of the title on a wide card, the heading floats in the
+middle of the header with nothing under it that reads as a table.
+
+Only five groups accumulate, and every one of them has exactly two series, so
+the table is three rows at its tallest. The reserved-width slot survives into
+it: a `Grid` sizes a column to its widest cell, so without the reservation the
+column would resize as a total crossed a magnitude and shuffle the card while
+somebody read it.
+
+### A gap nobody sampled is not traffic
+
+`maximumGap` is the widest interval one sample may be credited with. A laptop
+coming back from sleep leaves a single enormous gap, and a rectangle drawn
+across it invents traffic that never crossed the wire; the clipped remainder
+comes off `covered` instead, so the span tells you the total is thin.
+
+`AppModel.totalGap` is four ticks of the master clock, so it follows the
+Sampling tab rather than assuming the 0.5 s default. A ceiling fixed for that
+default would clip every interval of a sampler slowed to 2 s.
+
+### Fewer than two samples has no total
+
+Nil, not zero — the same answer `RateTracker` gives on a first read, for the
+same reason. Zero draws as an idle machine rather than as a missing number.
+
+### Not in the CSV
+
+`Copy Data` still carries rates only. A spreadsheet's own `SUM` times the
+interval is this same arithmetic, and a "Total" row under the Time column is a
+type error waiting to be pasted into a chart.
+
 ## The time axis
 
 Three things have to be true of the labels along the bottom, and the first two
@@ -330,6 +431,56 @@ looking at, and none says less.
 
 `ChartAxis` in `MonitorCore` holds the arithmetic, which is why it is testable
 without a window.
+
+### The labels must not touch, and that beats having two of them
+
+The rule used to be the other way round: never fewer than two labels, and
+slightly tight labels beat a bare axis. It was right about "slightly tight" and
+wrong about what the arithmetic produced. On a 160-point plot the axis drew four
+labels 32 points wide with their centres 40 points apart, and at the narrowest
+card they overlapped outright — `08:52:3008:53:0008:53:30`. Labels that collide
+are not slightly tight; they are unreadable, and worse than the sparse axis the
+old rule was avoiding.
+
+Three things were wrong at once, and all three are fixed:
+
+- **The room was measured off the chart, not the plot.** A flat 50-point
+  allowance stood in for the y-axis, which is right for one card and generous
+  for every card whose numbers are long — and those are the cards whose plots
+  are narrowest. `chartBackground` hands over the real plot rect instead.
+  Not `chartOverlay`: an overlay sits above the content and would swallow the
+  mouse-down a tile's drag needs, which is the trap `ReorderDrag` documents.
+- **Every stride was costed at the same label width.** A stride of a minute or
+  more shows no seconds, so "8:52" needs a third less room than "8:52:30". The
+  measured figures are 20 points against 32, at `Theme.Layout.timeLabel`, and
+  budgeting the coarse strides at the wide figure made the axis unable to reach
+  for the one a cramped card wanted. Each candidate is now costed at the width
+  of its own labels.
+- **The labels were wider than they needed to be.** They have their own size,
+  smaller than the y-axis labels beside them: there are more of them, they are
+  longer, and a y-axis label has a whole row to itself. The hour lost its
+  leading zero too — "0" in "08:52:30" carries nothing across four labels with
+  no room for it. Minutes and seconds keep both digits, because those are
+  positional and "8:5:3" is not a time.
+
+Two labels are still what the axis reaches for: the walk goes finest first, so
+the first stride that fits is the densest that fits. What is gone is the
+promise. A narrow card showing two minutes has no stride both coarse enough to
+fit and fine enough to guarantee two, and it now shows one label rather than two
+on top of each other.
+
+### Sideways labels
+
+**Turn the time labels sideways** in the Charts tab is how to have both. On its
+side a label costs its line height rather than its width — 10 points against 32
+— so the narrowest card fits four times where upright it fits two. Off by
+default, because horizontal is easier to read and on every card but the smallest
+there is room for it.
+
+`rotationEffect` turns the glyphs and not the layout, so the rotated label needs
+`fixedSize` to stop its frame squeezing the text first, and then a frame of its
+own. Without that the axis reserves the label's width and none of its height,
+and the turned text draws over the chart.
 
 ### The interval comes from the window's length, never its position
 
@@ -793,3 +944,76 @@ One needle colour for every gauge. A needle that changes colour per metric turns
 a dashboard into a fruit salad and stops the eye reading position, which is the
 only thing a needle is for. Chart series colours avoid red/green pairs on the
 same chart.
+
+## Which build is this?
+
+The title bar carries the app's name with the commit and the build time under
+it:
+
+```
+Monitor
+v1.4.0-9-g909767d9 · Aug 28 09:40
+```
+
+One block, so it reads as a heading with its build beneath rather than as a chip
+parked beside a title repeating it. The window's own title is removed
+(`toolbar(removing: .title)`, or an empty `navigationTitle` on macOS 14, where
+`ToolbarDefaultItemKind.title` does not exist) or the system would draw the name
+a second time. The `Window` scene keeps its real name either way, so the Window
+menu and the Dock still say what this is, and that name lives beside the version
+in `MonitorVersion` — two spellings of one name is the sort of thing nobody
+notices until a screenshot.
+
+Removing the title cost the toolbar something that was not obvious until it was
+gone: the title was taking the slack in the middle, and it was that, not the
+items' own placement, pushing the History picker and the size and rate controls
+to the trailing edge. Without it `.automatic` packed them up against the stamp.
+They are `.primaryAction` now, which says what the layout actually depends on
+rather than leaning on something that is no longer there.
+
+It is in the title bar rather than in the About panel because of how the app gets
+used — a monitor is left running for days, and the
+copy on screen is very often not the copy just built. "Am I looking at the
+change I just made?" should not cost two clicks.
+
+**White on black, in the system font** — not the panel's palette, and not the
+monospaced face the cards use. This is the one thing in the window that is not a
+reading. Everything else is a measurement of the machine, styled to be scanned;
+the stamp is a label on the photograph, and its job is to survive being
+screenshotted and read back later.
+
+The first version left it to the title bar's own styling and came out as dark
+text on a light glass pill — the lowest contrast anywhere in the window, on the
+element whose whole purpose is to still be legible in a PNG somebody opens next
+month. macOS 26 wraps every toolbar item in that shared capsule, so the item
+opts out with `sharedBackgroundVisibility(.hidden)` and paints its own. Earlier
+releases add no capsule and need no opt-out, which is why the call is gated and
+additive rather than two sets of styling.
+
+`fixedSize`, so it is never truncated. A commit clipped to
+`v1.4.0-8-gc61738cf · Aug 28 09:3` is worse than no stamp at all: it looks
+complete.
+
+### Two facts, two sources
+
+**The commit is stamped at build time.** The `StampCommit` plugin runs
+`git describe --tags --always --dirty --abbrev=8` before every build and writes
+`CommitStamp`. It has to be captured then: a running program has no other way to
+know which commit it came from, and a checked-in constant is something somebody
+has to remember to update — which means a title bar that eventually lies.
+
+`describe` rather than a bare hash, for the `-dirty`. A build with uncommitted
+changes is not the commit it names, and saying so is the difference between a
+stamp you can trust and one you have to double-check.
+
+**The build time is read at runtime**, from the executable's own modification
+date. It could have been stamped alongside the commit, and that would have been
+worse: the build time changes on every build by definition, so writing it into a
+source file would recompile `MonitorCore` every time and cost the fast
+`swift run` loop — for a fact the filesystem already knows. The plugin writes
+its own output only when the hash has actually changed, for the same reason.
+
+Where either is unavailable it drops out rather than being filled in: no git
+gives `unknown`, and an unreadable executable date leaves the commit on its own.
+Half an answer beats a stand-in that looks like the other half — the same rule
+the sources follow when a read fails.

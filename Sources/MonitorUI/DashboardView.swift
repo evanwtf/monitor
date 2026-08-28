@@ -96,6 +96,10 @@ public struct DashboardView: View {
         )
         .onPreferenceChange(PanelSizeKey.self) { panelSize = $0 }
         .toolbar { toolbar }
+        // The name is drawn by the stamp, which puts the build underneath it.
+        // Left in place the system would draw it a second time, beside its own
+        // copy.
+        .removingWindowTitle()
         .onAppear { model.start() }
         .onDisappear { model.stop() }
         // A sheet rather than a second window: it is temporary, Escape already
@@ -390,7 +394,11 @@ public struct DashboardView: View {
             // membership: switch one direction off and the card stops being a
             // pair.
             mirror: model.charts.mirror(for: drawn.map(\.descriptor)),
-            stacked: model.charts.stack(for: drawn.map(\.descriptor))
+            stacked: model.charts.stack(for: drawn.map(\.descriptor)),
+            // Nil switches totals off. The gap comes from the model because
+            // that is where the sampling clock is.
+            totalGap: model.charts.showsTotals ? model.totalGap : nil,
+            rotatesTimeLabels: model.charts.rotatesTimeLabels
         )
     }
 
@@ -477,9 +485,73 @@ public struct DashboardView: View {
 
     // MARK: - Toolbar
 
+    /// Which build this is, beside the window's title.
+    ///
+    /// In the title bar rather than the About panel because of how this app
+    /// gets used: a monitor is left running for days, and the copy on screen is
+    /// very often not the copy just built. The question "am I looking at the
+    /// change I just made?" should not cost two clicks to answer.
+    ///
+    /// **White on black, in the system font.** Not the panel's palette and not
+    /// the monospaced face the cards use: this is the one thing in the window
+    /// that is not a reading. Everything else on screen is a measurement of the
+    /// machine, styled to be scanned; the stamp is a label on the photograph,
+    /// and its job is to survive being screenshotted and read back later.
+    ///
+    /// Which is also why it is black rather than `Theme.panel`, and not left to
+    /// the title bar's own styling. The first version borrowed the toolbar's
+    /// glass and came out as dark text on a light pill — the lowest contrast
+    /// anywhere in the window, on the one element whose entire purpose is to
+    /// still be legible in a PNG somebody opens next month.
+    ///
+    /// `fixedSize` so it is never truncated. A commit clipped to
+    /// `v1.4.0-8-gc61738cf · Aug 28 09:3` is worse than no stamp: it looks
+    /// complete.
+    ///
+    /// The app's name sits on top of it and the window's own title is removed,
+    /// so the two read as one block — a heading with its build under it —
+    /// rather than as a chip parked next to a title that repeats it. A rounded
+    /// rectangle rather than a capsule now that it is two lines: a capsule's
+    /// ends bow away from a left-aligned second line.
+    private var buildStamp: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(MonitorVersion.name)
+                .font(.headline)
+            Text(BuildStamp.label)
+                .font(.caption)
+        }
+        .foregroundStyle(.white)
+        .lineLimit(1)
+        .fixedSize()
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(.black, in: RoundedRectangle(cornerRadius: 7))
+        .help("The commit this build came from, and when it was built")
+        .accessibilityLabel("\(MonitorVersion.name), build \(BuildStamp.label)")
+    }
+
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
-        ToolbarItem {
+        // macOS 26 wraps every toolbar item in a shared capsule, which put the
+        // stamp in the same light pill as the controls opposite — dark text on
+        // light glass, and clipped where the capsule ended. The stamp is not a
+        // control and should not dress as one, so on 26 it opts out and draws
+        // its own background. Earlier releases add no capsule and need no
+        // opt-out, which is why this is additive rather than conditional
+        // styling.
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .navigation) { buildStamp }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .navigation) { buildStamp }
+        }
+        // `.primaryAction` rather than the default `.automatic`. The controls
+        // used to be pushed to the trailing edge by the window's title taking
+        // the slack in the middle; with the title removed, `.automatic` packed
+        // them up against the stamp on the left. Anchoring them explicitly says
+        // what the layout actually depends on, instead of leaning on something
+        // that is no longer there.
+        ToolbarItem(placement: .primaryAction) {
             Picker("History", selection: $window) {
                 Text("1 min").tag(TimeInterval(60))
                 Text("2 min").tag(TimeInterval(120))
@@ -490,7 +562,7 @@ public struct DashboardView: View {
             }
             .pickerStyle(.segmented)
         }
-        ToolbarItem {
+        ToolbarItem(placement: .primaryAction) {
             Button {
                 showsSizes.toggle()
             } label: {
@@ -501,7 +573,7 @@ public struct DashboardView: View {
                 SizePopover(model: model, gaugeCeiling: gaugeCeiling)
             }
         }
-        ToolbarItem {
+        ToolbarItem(placement: .primaryAction) {
             // The same list preferences offers, not a second one. A rate set
             // here and a rate set there are one setting, and a toolbar that
             // offered 0.25 s while the Sampling tab did not would show an empty
@@ -521,4 +593,21 @@ public struct DashboardView: View {
 #Preview {
     DashboardView()
         .frame(width: 900, height: 700)
+}
+
+private extension View {
+    /// Drop the window's own title from the toolbar.
+    ///
+    /// `ToolbarDefaultItemKind.title` arrived in macOS 15 and this package
+    /// still builds for 14, where an empty title comes to the same thing on
+    /// screen. Either way the `Window` scene keeps its real name, so the Window
+    /// menu and the Dock still say what this is.
+    @ViewBuilder
+    func removingWindowTitle() -> some View {
+        if #available(macOS 15.0, *) {
+            toolbar(removing: .title)
+        } else {
+            navigationTitle("")
+        }
+    }
 }

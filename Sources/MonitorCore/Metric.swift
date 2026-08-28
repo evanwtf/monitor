@@ -30,6 +30,33 @@ public enum MetricUnit: String, Sendable, Codable {
     /// "3200 rpm" are not the same reading on a chart axis.
     case rpm
     case seconds
+
+    /// What a second's worth of this unit adds up to, and the factor that gets
+    /// it there. Nil where a total means nothing.
+    ///
+    /// Derived from the unit rather than from a table of metric ids, the same
+    /// way `ChartMirror` and `ChartStack` read `direction` and `composition`:
+    /// a source added later gets a total without this file being told it
+    /// exists.
+    ///
+    /// **Network reads in bits and totals in bytes, and the divide by eight
+    /// lives here.** A link is quoted in bits — a 1 Gbit port, an 866 Mbit
+    /// Wi-Fi link — so the rate stays Mbit/s. A volume is quoted in bytes
+    /// everywhere it matters: ISP caps, file sizes, Finder. Two different
+    /// questions with two right answers, and one definition of the conversion
+    /// between them, for the same reason `NetworkSource` multiplies by eight in
+    /// the source rather than in the gauge.
+    ///
+    /// Nil for every level. Adding temperatures gives degree-seconds, which is
+    /// not a quantity anybody wants under a chart of a CPU getting warm.
+    public var accumulation: (unit: MetricUnit, scale: Double)? {
+        switch self {
+        case .bytesPerSecond: (.bytes, 1)
+        case .bitsPerSecond: (.bytes, 1.0 / 8)
+        case .operationsPerSecond: (.count, 1)
+        default: nil
+        }
+    }
 }
 
 /// How consecutive samples relate to each other.

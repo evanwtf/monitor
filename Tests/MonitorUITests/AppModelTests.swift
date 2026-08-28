@@ -290,3 +290,36 @@ struct DropNeighbourTests {
         #expect(neighbour(after: "z", in: ["a", "b"], edge: .trailing) == nil)
     }
 }
+
+@MainActor
+@Suite("Window totals")
+struct AppModelTotalsTests {
+    /// A stable domain cleared per test, for the reason the suite above gives:
+    /// a uuid each time writes a new plist on every run, forever.
+    private static let domain = "wtf.evan.monitor.tests.totals"
+
+    private static func makeModel() -> AppModel {
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        return AppModel(sources: [], defaults: defaults)
+    }
+
+    @Test("The gap a total may credit follows the clock, not a constant")
+    func gapFollowsTheClock() {
+        // Somebody who slows the sampler to 2 s has 2 s gaps, and a ceiling
+        // fixed for the 0.5 s default would clip every one of them — quietly
+        // reporting a quarter of the traffic that crossed the wire.
+        let model = Self.makeModel()
+        model.interval = 0.5
+        #expect(model.totalGap == 2)
+        model.interval = 2
+        #expect(model.totalGap == 8)
+    }
+
+    @Test("Totals are on without being asked for")
+    func onByDefault() {
+        // Unlike mirroring and stacking beside it. Those change what the
+        // picture means; this adds a number next to one already there.
+        #expect(Self.makeModel().charts.showsTotals)
+    }
+}

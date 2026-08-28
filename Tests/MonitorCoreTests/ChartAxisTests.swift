@@ -7,56 +7,119 @@ struct ChartAxisTests {
     /// The four windows the toolbar offers.
     static let windows: [TimeInterval] = [60, 120, 300, 600]
 
-    @Test("A narrow card gets fewer labels than a wide one")
+    /// Plot widths the panel can really produce: the card slider runs 200 to
+    /// 600 points, and the y-axis and its labels come off that before the time
+    /// labels see any of it.
+    static let plots: [Double] = [130, 160, 200, 260, 380, 560]
+
+    @Test("A narrow plot gets fewer labels than a wide one")
     func countFollowsWidth() {
-        #expect(ChartAxis.maximumTicks(width: 260) < ChartAxis.maximumTicks(width: 600))
+        #expect(ChartAxis.maximumTicks(width: 120) < ChartAxis.maximumTicks(width: 400))
     }
 
-    @Test("Never fewer than two labels, never more than five")
+    @Test("Never fewer than one label, never more than five")
     func countIsBounded() {
-        #expect(ChartAxis.maximumTicks(width: 0) == ChartAxis.fewest)
+        // One, not two. Two is what the axis reaches for, not what it can
+        // promise — see `marks`, where fitting wins over the floor.
+        #expect(ChartAxis.maximumTicks(width: 0) == 1)
         #expect(ChartAxis.maximumTicks(width: 10000) == ChartAxis.most)
-        #expect(ChartAxis.maximumTicks(width: .nan) == ChartAxis.fewest)
+        #expect(ChartAxis.maximumTicks(width: .nan) == 1)
     }
 
-    @Test("Every window on every card width gets at least two labels")
-    func neverFewerThanTwo() {
-        // The bug this pins: at five minutes on a narrow card the interval
-        // chosen was 300 s for a 300 s window, and a 300 s window inset at both
-        // ends contains a multiple of 300 only sometimes. The axis emptied
-        // itself. Swept across a whole window's worth of start offsets, because
-        // whether an absolute boundary falls inside depends on where the window
-        // happens to sit.
+    @Test("A label without seconds needs less room than one with them")
+    func coarseStridesAreCheaper() {
+        // The fact the arithmetic used to miss. "8:52" is a third narrower than
+        // "8:52:30", so budgeting every stride at the wider figure made the
+        // coarse strides look as expensive as the fine ones — and the axis
+        // never reached for the one a cramped card wanted.
+        let withSeconds = ChartAxis.spacing(showsSeconds: true, rotated: false)
+        let without = ChartAxis.spacing(showsSeconds: false, rotated: false)
+        #expect(without < withSeconds)
+        #expect(ChartAxis.spacing(showsSeconds: true, rotated: true) < without)
+    }
+
+    @Test("Labels never overlap, at any window, plot or phase")
+    func labelsNeverCollide() {
+        // The bug that prompted all of this: on a 160-point plot the axis drew
+        // four labels 32 points wide with their centres 40 apart, and at the
+        // narrowest card they ran into each other. This is that failure stated
+        // as arithmetic — the ink two neighbouring labels need against the
+        // distance between them.
         for span in Self.windows {
-            for width in [200.0, 260, 400, 600, 900] {
-                let maximum = ChartAxis.maximumTicks(width: width)
-                for offset in stride(from: 0.0, to: span, by: span / 20) {
-                    let marks = ChartAxis.marks(
-                        from: 1_700_000_000 + offset,
-                        to: 1_700_000_000 + offset + span,
-                        maximumTicks: maximum
-                    )
-                    #expect(marks.times.count >= ChartAxis.fewest)
+            for width in Self.plots {
+                for rotated in [false, true] {
+                    for offset in stride(from: 0.0, to: span, by: span / 40) {
+                        let start = 1_700_000_000 + offset
+                        let marks = ChartAxis.marks(
+                            from: start, to: start + span,
+                            plotWidth: width, rotated: rotated
+                        )
+                        guard marks.times.count >= 2 else { continue }
+                        let pointsPerSecond = width / span
+                        let apart = marks.stride * pointsPerSecond
+                        let needed = ChartAxis.spacing(
+                            showsSeconds: ChartAxis.showsSeconds(stride: marks.stride),
+                            rotated: rotated
+                        )
+                        #expect(apart >= needed)
+                    }
                 }
             }
         }
     }
 
-    @Test("The card's room is respected wherever two labels fit inside it")
-    func staysWithinTheRoom() {
-        // Not an absolute cap: two labels beat a tidy count, so a window that
-        // cannot show two within the room is allowed to go over. It must not go
-        // far over.
+    @Test("Two labels wherever two fit, and never a bare axis")
+    func reachesForTwo() {
+        // The floor the old rule protected, kept everywhere it can be had. A
+        // narrow card showing two minutes is the case that cannot: no stride is
+        // both coarse enough to fit and fine enough to guarantee two, and one
+        // readable label beats two on top of each other. Sideways labels are
+        // how to have both, so the rotated pass demands two outright.
         for span in Self.windows {
-            for width in [200.0, 260, 400, 600, 900] {
-                let maximum = ChartAxis.maximumTicks(width: width)
+            for width in Self.plots {
                 for offset in stride(from: 0.0, to: span, by: span / 20) {
-                    let marks = ChartAxis.marks(
-                        from: 1_700_000_000 + offset,
-                        to: 1_700_000_000 + offset + span,
-                        maximumTicks: maximum
+                    let start = 1_700_000_000 + offset
+                    let upright = ChartAxis.marks(
+                        from: start, to: start + span, plotWidth: width
                     )
-                    #expect(marks.times.count <= max(maximum, ChartAxis.fewest) + 3)
+                    #expect(!upright.times.isEmpty)
+                    let turned = ChartAxis.marks(
+                        from: start, to: start + span, plotWidth: width, rotated: true
+                    )
+                    #expect(turned.times.count >= ChartAxis.fewest)
+                }
+            }
+        }
+    }
+
+    @Test("Turning the labels never costs a label")
+    func rotatingOnlyEverHelps() {
+        // The whole promise of the setting: a rotated label is cheaper, so it
+        // can only buy a finer stride, never a coarser one.
+        for span in Self.windows {
+            for width in Self.plots {
+                let upright = ChartAxis.marks(
+                    from: 1_700_000_000, to: 1_700_000_000 + span, plotWidth: width
+                )
+                let turned = ChartAxis.marks(
+                    from: 1_700_000_000, to: 1_700_000_000 + span,
+                    plotWidth: width, rotated: true
+                )
+                #expect(turned.stride <= upright.stride)
+            }
+        }
+    }
+
+    @Test("Never denser than five labels")
+    func neverTooDense() {
+        for span in Self.windows {
+            for width in Self.plots + [2000] {
+                for rotated in [false, true] {
+                    let marks = ChartAxis.marks(
+                        from: 1_700_000_000, to: 1_700_000_000 + span,
+                        plotWidth: width, rotated: rotated
+                    )
+                    #expect(marks.times.count <= ChartAxis.most)
                 }
             }
         }
@@ -69,14 +132,13 @@ struct ChartAxisTests {
         // and 120 s as the window moved, so the labels jumped between two and
         // five every few seconds.
         for span in Self.windows {
-            for width in [200.0, 260, 400, 600, 900] {
-                let maximum = ChartAxis.maximumTicks(width: width)
+            for width in Self.plots {
                 let strides = Set(
                     stride(from: 0.0, to: span, by: 1).map { offset in
                         ChartAxis.marks(
                             from: 1_700_000_000 + offset,
                             to: 1_700_000_000 + offset + span,
-                            maximumTicks: maximum
+                            plotWidth: width
                         ).stride
                     }
                 )
@@ -87,7 +149,7 @@ struct ChartAxisTests {
 
     @Test("Ticks land on round clock boundaries")
     func onBoundaries() {
-        let marks = ChartAxis.marks(from: 1_000_007, to: 1_000_127, maximumTicks: 3)
+        let marks = ChartAxis.marks(from: 1_000_007, to: 1_000_127, plotWidth: 200)
         #expect(!marks.times.isEmpty)
         #expect(marks.times.allSatisfy {
             $0.truncatingRemainder(dividingBy: marks.stride) == 0
@@ -121,15 +183,22 @@ struct ChartAxisTests {
         #expect(ChartAxis.times(from: 100, to: 100, stride: 30).isEmpty)
         #expect(ChartAxis.times(from: 200, to: 100, stride: 30).isEmpty)
         #expect(ChartAxis.times(from: 0, to: 120, stride: 0).isEmpty)
-        #expect(ChartAxis.marks(from: 100, to: 100, maximumTicks: 3).times.isEmpty)
+        #expect(ChartAxis.marks(from: 100, to: 100, plotWidth: 200).times.isEmpty)
+    }
+
+    @Test("A plot with no width still names an interval rather than crashing")
+    func noWidthYet() {
+        // The first frame, before the geometry reader has reported anything.
+        let marks = ChartAxis.marks(from: 0, to: 600, plotWidth: 0)
+        #expect(ChartAxis.strides.contains(marks.stride))
+        #expect(ChartAxis.marks(from: 0, to: 600, plotWidth: .nan).stride > 0)
     }
 
     @Test("The roundest interval that fits is the one chosen")
     func prefersCoarse() {
-        // Ten minutes across five labels could be 15 s; it should be 120 s.
-        let marks = ChartAxis.marks(
-            from: 1_700_000_000, to: 1_700_000_600, maximumTicks: 5
-        )
+        // Ten minutes on a wide plot could be labelled every 15 s; it should be
+        // 120 s. Five labels is as dense as this ever gets.
+        let marks = ChartAxis.marks(from: 1_700_000_000, to: 1_700_000_600, plotWidth: 560)
         #expect(marks.stride >= 120)
     }
 
@@ -138,5 +207,19 @@ struct ChartAxisTests {
         #expect(ChartAxis.showsSeconds(stride: 30))
         #expect(!ChartAxis.showsSeconds(stride: 60))
         #expect(!ChartAxis.showsSeconds(stride: 300))
+    }
+
+    @Test("The screenshot that started this now fits its plot")
+    func theBugThatStartedThis() {
+        // Two minutes on the Disk card: about 160 points of plot once "20 MB/s"
+        // has taken its side. Four labels went in, 32 points wide, centres 40
+        // apart — touching, and overlapping outright on a narrower card.
+        let marks = ChartAxis.marks(from: 1_700_000_000, to: 1_700_000_120, plotWidth: 160)
+        let apart = marks.stride * (160.0 / 120)
+        let needed = ChartAxis.spacing(
+            showsSeconds: ChartAxis.showsSeconds(stride: marks.stride), rotated: false
+        )
+        #expect(apart >= needed)
+        #expect(marks.times.count >= ChartAxis.fewest)
     }
 }

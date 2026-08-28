@@ -63,4 +63,4 @@ jobs:
           echo "swiftformat $(swiftformat --version)"
 
       - name: Lint
-        run: swiftformat Sources Tests --lint --cache ignore
+        run: swiftformat Sources Tests Plugins --lint --cache ignore

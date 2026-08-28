@@ -221,6 +221,38 @@ struct ChartsTab: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
+
+            Section {
+                Toggle("Show totals for the window", isOn: $model.charts.showsTotals)
+            } footer: {
+                Text(
+                    "How much moved, beside how fast it is moving: network and "
+                        + "disk in bytes, packets and disk operations as counts. "
+                        + "The total covers exactly the window the chart draws, "
+                        + "so the History picker changes both at once. A card "
+                        + "with less history than the window says the span it "
+                        + "really has rather than the one it was asked for."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section {
+                Toggle("Turn the time labels sideways", isOn: $model.charts.rotatesTimeLabels)
+            } footer: {
+                Text(
+                    "A label lying down costs its width, and a narrow card runs "
+                        + "out of that long before it runs out of chart. Stood "
+                        + "on end it costs only its height, so the same card "
+                        + "fits five times where it fitted two. Off by default, "
+                        + "because horizontal is easier to read wherever there "
+                        + "is room for it."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .formStyle(.grouped)
     }

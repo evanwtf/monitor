@@ -216,3 +216,29 @@ readout of `900` is useless until you have also read the word beneath it. The
 A chart axis and the CLI carry three significant figures, which keeps a value's
 width near-constant as it moves. The gauge readout goes further and uses a fixed
 `xxxx.yy` field so the decimal point never moves at all — see `docs/ui.md`.
+
+## What a rate adds up to
+
+`MetricUnit.accumulation` says what a second's worth of a unit becomes, and the
+factor that gets it there. It is nil for every level: adding temperatures gives
+degree-seconds, which is not a quantity anybody wants under a chart of a CPU
+getting warm.
+
+| Unit | Accumulates into | Factor |
+|------|------------------|--------|
+| `bytesPerSecond` | `bytes` | 1 |
+| `bitsPerSecond` | `bytes` | 1/8 |
+| `operationsPerSecond` | `count` | 1 |
+| everything else | — | — |
+
+**Network reads in bits and totals in bytes.** A link is quoted in bits — a
+1 Gbit port, an 866 Mbit Wi-Fi link — so the rate stays Mbit/s. A volume is
+quoted in bytes everywhere it matters: ISP caps, file sizes, Finder. Two
+different questions with two right answers. The divide by eight has exactly one
+definition, in `accumulation`, for the same reason `NetworkSource` multiplies by
+eight in the source rather than in the gauge: nothing downstream can then
+disagree about whether 1.4 GB and 11.2 Gbit are the same reading.
+
+Derived from the unit rather than from a table of metric ids, the same way
+`ChartMirror` and `ChartStack` read `direction` and `composition`. A source
+added later gets a total without anything being told it exists.

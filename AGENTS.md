@@ -48,7 +48,7 @@ swift run monitorctl list        # every source and the metrics it declares
 swift run monitorctl read        # read every metric once
 swift run monitorctl watch --source disk --interval 0.5
 swift run monitorctl watch --json --count 5        # machine-readable, bounded
-swiftformat Sources Tests --lint --cache ignore    # CI lint gate
+swiftformat Sources Tests Plugins --lint --cache ignore   # CI lint gate
 Scripts/make-app.sh [dest]       # wrap the release binary in monitor.app
 Scripts/make-icon.swift out.icns # draw the app icon (make-app.sh calls this)
 Scripts/notarize.sh app zip      # notarize a Developer ID build and staple it
@@ -79,6 +79,9 @@ Sources/
                    linked into the app — see "Guardrails" below.
   monitor/         the app target (@main SwiftUI App) and its AppDelegate
   monitorctl/      headless CLI harness
+Plugins/
+  StampCommit/     prebuild plugin: writes the commit into a Swift constant
+                   before every build, so the title bar cannot go stale
 Scripts/           make-app.sh, which builds monitor.app, make-icon.swift,
                    which draws its icon, and notarize.sh, which notarizes and
                    staples a Developer ID build
@@ -181,6 +184,32 @@ are no component-level AGENTS.md files.
   is its own type and key beside `LayoutPreferences`: **which cards exist**
   versus **how one is drawn**. Off by default, because a chart that changes
   shape on upgrade is worse than one somebody switches on.
+- **A rate can be totalled, and the sum is already in the buffer.** **Show
+  totals for the window** in the Charts tab puts how much moved beside how fast
+  it is moving. A rate sample *is* the mean over the gap before it, so
+  `Σ(rate × preceding gap)` telescopes back to exactly the counter delta —
+  `WindowTotal` in `MonitorCore` is that sum, and it keeps no counter history,
+  changes no source and writes nothing. Three things it must keep doing: report
+  **`covered` beside `value`**, because "2 min" over ten seconds of history is
+  the quiet kind of wrong; **clip an interval wider than `maximumGap`**, or a
+  laptop back from sleep credits one sample with an hour of traffic that never
+  crossed the wire; and return **nil under two samples**, not zero, the same
+  answer `RateTracker` gives on a first read. `MetricUnit.accumulation` says
+  what a unit adds up to and is nil for every level — derived from the unit like
+  `direction` and `composition`, never a table of ids. **Network totals in
+  bytes** while its rate stays Mbit/s: a link is quoted in bits, a volume in
+  bytes, and the divide by eight has one definition. The card totals `series`,
+  not `visible` — the sum needs the sample just outside the window's left edge
+  to measure the interval straddling it. `AppModel.totalGap` is four ticks of
+  the master clock, so it follows the Sampling tab rather than assuming 0.5 s.
+  **A card with totals draws a `Grid`, not a `FlowLayout`** — swatch, name,
+  rate, total, with the totals column headed and **right-justified**, because a
+  magnitude is read by where its last digit sits and wrapped entries put them at
+  four different left edges. It sits under the title, never beside it:
+  `ViewThatFits` is the right question for a wrapping row and the wrong one for
+  a column of figures. Cards with nothing to total keep the flow. The reserved
+  slot survives into the table — a `Grid` column sizes to its widest cell, so
+  without it the column resizes whenever a total crosses a magnitude.
 - **The time axis is computed, not automatic.** `ChartAxis` in `MonitorCore`.
   Three rules, and the first two versions traded one for another: a tick is an
   **instant** (10:42:00 sits at 10:42:00 and scrolls left keeping its label —
@@ -190,7 +219,22 @@ are no component-level AGENTS.md files.
   window's **length alone, never its position** — the count drifts by one as a
   tick scrolls off, but an interval chosen by counting actual ticks flips
   between rungs as the window slides and the axis restyles itself every few
-  seconds. No AM/PM; seconds only when the interval is under a minute.
+  seconds. No AM/PM, and no leading zero on the hour; seconds only when the
+  interval is under a minute.
+  **Rule 2 now wins over rule 1**, which reverses the original order: labels
+  that collide are unreadable, which is worse than the sparse axis the old rule
+  avoided. Three things had to be right together, and getting one wrong put
+  four overlapping labels on a card with room for two. The room is the **plot**,
+  read from `chartBackground`'s proxy — never `chartOverlay`, which would
+  swallow a tile's drag; a flat allowance for the y-axis is wrong on exactly the
+  cards whose numbers are longest. Each stride is costed at the width of **its
+  own** labels, because a stride of a minute or more shows no seconds and needs
+  a third less room. And the widths are **measured**, not estimated — 32 points
+  with seconds, 20 without, 10 rotated. **Turn the time labels sideways** in the
+  Charts tab is how a narrow card gets both the fit and the two labels: rotated,
+  a label costs its line height instead of its width. `rotationEffect` turns the
+  glyphs and not the layout, so it needs `fixedSize` and then a frame, or the
+  axis reserves no height and the text draws over the chart.
 - **A card's header fits, it does not count.** Title beside legend when it fits,
   stacked when it does not, decided by `ViewThatFits`. A count of series cannot
   know how wide the words are, and since the title is `fixedSize` a header that
@@ -219,8 +263,8 @@ are no component-level AGENTS.md files.
   double-click to zoom — and that they do not fight is checked by running
   `swift run monitor`, never by a test.
 - **The layout is chosen per metric, in preferences.** Cmd-, opens a tabbed
-  window. Its **Charts** tab holds how cards are *drawn* (mirroring), which is
-  a different question from which cards there are. Its **Layout** tab lists
+  window. Its **Charts** tab holds how cards are *drawn* — stacking, mirroring,
+  totals — which is a different question from which cards there are. Its **Layout** tab lists
   every metric with a Gauge checkbox and a
   Chart checkbox, grouped into collapsible sections whose headings carry the
   same two checkboxes for the whole group. The two columns are not symmetrical:
@@ -289,6 +333,34 @@ are no component-level AGENTS.md files.
   **`notarize.sh` rebuilds the zip after stapling** — `stapler`
   writes into the bundle, not the archive, so the uploaded copy is unstapled
   until it is made again. `docs/signing.md` is the setup.
+- **The title bar says which build this is.** The app's name with
+  `BuildStamp.label` under it — the commit and when it was made — as one block,
+  **white on black in the system font**, with the window's own title removed
+  (`toolbar(removing: .title)`, gated: the `.title` kind is macOS 15, so 14 gets
+  an empty `navigationTitle`) so the name is not drawn twice. The `Window` scene
+  keeps its real name for the Window menu and the Dock, and that name lives
+  beside the version in `MonitorVersion`. **The trailing controls need
+  `.primaryAction`, not `.automatic`** — they used to be pushed right by the
+  title taking the slack in the middle, and removing it packed them up against
+  the stamp. The styling is deliberately not the panel's palette or the cards' monospaced face.
+  It is the one thing in the window that is not a reading: everything else is a
+  measurement styled to be scanned, and this is a label on the photograph, there
+  to survive being screenshotted and read back later. macOS 26 wraps toolbar
+  items in a shared glass capsule, which made it dark-on-light and clipped it,
+  so the item opts out with `sharedBackgroundVisibility(.hidden)` (gated to 26,
+  additive — earlier releases add no capsule) and paints its own. `fixedSize`,
+  because a commit truncated to look complete is worse than no stamp. **The two halves are sourced differently on
+  purpose.** The commit is stamped at build time by the `StampCommit` prebuild
+  plugin (`git describe --tags --always --dirty`), because a running program has
+  no other way to know it and a checked-in constant is one somebody has to
+  remember to update. The build time is read at *runtime* from the executable's
+  own modification date — stamping it too would rewrite a source file on every
+  build and recompile `MonitorCore` every time, which is the fast `swift run`
+  loop gone for a fact the filesystem already has. **Keep `-dirty`**: a build
+  with uncommitted changes is not the commit it names. The plugin writes its
+  output only when the hash changes, for the same incremental-build reason, and
+  falls back to `unknown` where there is no git — a source tarball, say. Lint
+  covers `Plugins` too: `swiftformat Sources Tests Plugins`.
 - **The version lives in `MonitorCore/Version.swift`.** The About panel reads
   it at runtime and `make-app.sh` greps that file when it writes `Info.plist`,
   so a bundled build and `swift run monitor` cannot claim different versions.
@@ -325,6 +397,22 @@ are no component-level AGENTS.md files.
 
 ## Making Changes
 
+* **One pull request per piece of work, not per commit.** Related changes ship
+  together even when they touch different files and could be described
+  separately. Splitting a session's work into several pull requests is the
+  wrong default here: they end up *stacked* — each based on the one before —
+  and a stacked pull request is not independently reviewable or mergeable, so
+  the split buys none of the review value it looks like it buys. What it costs
+  is real: a squash-merge and a **release** each, for one change. Keep the
+  separable history in the commits, where it is free.
+  **This matters most for UI work, which cannot be reviewed piecemeal.** There
+  is one window. A change to a card, the axis under it and the title bar above
+  it are seen together or not at all, and the only useful question — does this
+  read better — can only be asked of the whole screen. Three pull requests
+  against one screenshot is three views of a thing nobody can look at
+  separately.
+  Split only when the parts are genuinely independent of each other and could
+  land in either order.
 * Make minimal, focused changes; avoid broad refactors unless requested.
 * Preserve existing architecture and patterns.
 * Don't introduce new dependencies without justification.
@@ -342,7 +430,7 @@ are no component-level AGENTS.md files.
 
 ### Always
 
-- Run `swift build && swift test` and `swiftformat Sources Tests --lint --cache
+- Run `swift build && swift test` and `swiftformat Sources Tests Plugins --lint --cache
   ignore` before considering work done. Both are CI gates.
 - Keep `MonitorCore` free of macOS system APIs. It is the part that can be
   tested on any machine in any state, and that is worth protecting.
