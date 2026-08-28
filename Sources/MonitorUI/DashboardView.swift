@@ -96,6 +96,10 @@ public struct DashboardView: View {
         )
         .onPreferenceChange(PanelSizeKey.self) { panelSize = $0 }
         .toolbar { toolbar }
+        // The name is drawn by the stamp, which puts the build underneath it.
+        // Left in place the system would draw it a second time, beside its own
+        // copy.
+        .removingWindowTitle()
         .onAppear { model.start() }
         .onDisappear { model.stop() }
         // A sheet rather than a second window: it is temporary, Escape already
@@ -503,17 +507,27 @@ public struct DashboardView: View {
     /// `fixedSize` so it is never truncated. A commit clipped to
     /// `v1.4.0-8-gc61738cf · Aug 28 09:3` is worse than no stamp: it looks
     /// complete.
+    ///
+    /// The app's name sits on top of it and the window's own title is removed,
+    /// so the two read as one block — a heading with its build under it —
+    /// rather than as a chip parked next to a title that repeats it. A rounded
+    /// rectangle rather than a capsule now that it is two lines: a capsule's
+    /// ends bow away from a left-aligned second line.
     private var buildStamp: some View {
-        Text(BuildStamp.label)
-            .font(.body)
-            .foregroundStyle(.white)
-            .lineLimit(1)
-            .fixedSize()
-            .padding(.horizontal, 9)
-            .padding(.vertical, 3)
-            .background(.black, in: Capsule())
-            .help("The commit this build came from, and when it was built")
-            .accessibilityLabel("Build \(BuildStamp.label)")
+        VStack(alignment: .leading, spacing: 0) {
+            Text(MonitorVersion.name)
+                .font(.headline)
+            Text(BuildStamp.label)
+                .font(.caption)
+        }
+        .foregroundStyle(.white)
+        .lineLimit(1)
+        .fixedSize()
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(.black, in: RoundedRectangle(cornerRadius: 7))
+        .help("The commit this build came from, and when it was built")
+        .accessibilityLabel("\(MonitorVersion.name), build \(BuildStamp.label)")
     }
 
     @ToolbarContentBuilder
@@ -573,4 +587,21 @@ public struct DashboardView: View {
 #Preview {
     DashboardView()
         .frame(width: 900, height: 700)
+}
+
+private extension View {
+    /// Drop the window's own title from the toolbar.
+    ///
+    /// `ToolbarDefaultItemKind.title` arrived in macOS 15 and this package
+    /// still builds for 14, where an empty title comes to the same thing on
+    /// screen. Either way the `Window` scene keeps its real name, so the Window
+    /// menu and the Dock still say what this is.
+    @ViewBuilder
+    func removingWindowTitle() -> some View {
+        if #available(macOS 15.0, *) {
+            toolbar(removing: .title)
+        } else {
+            navigationTitle("")
+        }
+    }
 }

@@ -6,4 +6,9 @@
 /// line: the script's pattern expects it there.
 public enum MonitorVersion {
     public static let string = "1.4.0"
+
+    /// What the app calls itself. Here beside the version because the title bar
+    /// draws it, the `Window` scene names itself with it, and two spellings of
+    /// one name is the sort of thing nobody notices until a screenshot.
+    public static let name = "Monitor"
 }

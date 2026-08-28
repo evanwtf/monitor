@@ -333,9 +333,13 @@ are no component-level AGENTS.md files.
   **`notarize.sh` rebuilds the zip after stapling** — `stapler`
   writes into the bundle, not the archive, so the uploaded copy is unstapled
   until it is made again. `docs/signing.md` is the setup.
-- **The title bar says which build this is.** `BuildStamp.label` — the commit
-  and when it was made — beside the window title, **white on black in the system
-  font**, deliberately not the panel's palette or the cards' monospaced face.
+- **The title bar says which build this is.** The app's name with
+  `BuildStamp.label` under it — the commit and when it was made — as one block,
+  **white on black in the system font**, with the window's own title removed
+  (`toolbar(removing: .title)`, gated: the `.title` kind is macOS 15, so 14 gets
+  an empty `navigationTitle`) so the name is not drawn twice. The `Window` scene
+  keeps its real name for the Window menu and the Dock, and that name lives
+  beside the version in `MonitorVersion`. The styling is deliberately not the panel's palette or the cards' monospaced face.
   It is the one thing in the window that is not a reading: everything else is a
   measurement styled to be scanned, and this is a label on the photograph, there
   to survive being screenshotted and read back later. macOS 26 wraps toolbar

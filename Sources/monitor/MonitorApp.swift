@@ -1,4 +1,5 @@
 import AppKit
+import MonitorCore
 import MonitorUI
 import SwiftUI
 
@@ -19,7 +20,7 @@ struct MonitorApp: App {
     @State private var model = AppModel()
 
     var body: some Scene {
-        Window("Monitor", id: "monitor") {
+        Window(MonitorVersion.name, id: "monitor") {
             DashboardView(model: model)
                 .frame(minWidth: 720, minHeight: 560)
         }

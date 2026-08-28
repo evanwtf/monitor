@@ -947,9 +947,25 @@ same chart.
 
 ## Which build is this?
 
-The title bar carries the commit and the build time, next to the window's name:
-`v1.4.0-4-ga8e8631 · Aug 28 09:52`. It is there rather than in the About panel
-because of how the app gets used — a monitor is left running for days, and the
+The title bar carries the app's name with the commit and the build time under
+it:
+
+```
+Monitor
+v1.4.0-9-g909767d9 · Aug 28 09:40
+```
+
+One block, so it reads as a heading with its build beneath rather than as a chip
+parked beside a title repeating it. The window's own title is removed
+(`toolbar(removing: .title)`, or an empty `navigationTitle` on macOS 14, where
+`ToolbarDefaultItemKind.title` does not exist) or the system would draw the name
+a second time. The `Window` scene keeps its real name either way, so the Window
+menu and the Dock still say what this is, and that name lives beside the version
+in `MonitorVersion` — two spellings of one name is the sort of thing nobody
+notices until a screenshot.
+
+It is in the title bar rather than in the About panel because of how the app gets
+used — a monitor is left running for days, and the
 copy on screen is very often not the copy just built. "Am I looking at the
 change I just made?" should not cost two clicks.
 
