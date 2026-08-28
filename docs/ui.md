@@ -964,6 +964,13 @@ menu and the Dock still say what this is, and that name lives beside the version
 in `MonitorVersion` — two spellings of one name is the sort of thing nobody
 notices until a screenshot.
 
+Removing the title cost the toolbar something that was not obvious until it was
+gone: the title was taking the slack in the middle, and it was that, not the
+items' own placement, pushing the History picker and the size and rate controls
+to the trailing edge. Without it `.automatic` packed them up against the stamp.
+They are `.primaryAction` now, which says what the layout actually depends on
+rather than leaning on something that is no longer there.
+
 It is in the title bar rather than in the About panel because of how the app gets
 used — a monitor is left running for days, and the
 copy on screen is very often not the copy just built. "Am I looking at the

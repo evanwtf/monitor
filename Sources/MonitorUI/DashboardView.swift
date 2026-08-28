@@ -545,7 +545,13 @@ public struct DashboardView: View {
         } else {
             ToolbarItem(placement: .navigation) { buildStamp }
         }
-        ToolbarItem {
+        // `.primaryAction` rather than the default `.automatic`. The controls
+        // used to be pushed to the trailing edge by the window's title taking
+        // the slack in the middle; with the title removed, `.automatic` packed
+        // them up against the stamp on the left. Anchoring them explicitly says
+        // what the layout actually depends on, instead of leaning on something
+        // that is no longer there.
+        ToolbarItem(placement: .primaryAction) {
             Picker("History", selection: $window) {
                 Text("1 min").tag(TimeInterval(60))
                 Text("2 min").tag(TimeInterval(120))
@@ -556,7 +562,7 @@ public struct DashboardView: View {
             }
             .pickerStyle(.segmented)
         }
-        ToolbarItem {
+        ToolbarItem(placement: .primaryAction) {
             Button {
                 showsSizes.toggle()
             } label: {
@@ -567,7 +573,7 @@ public struct DashboardView: View {
                 SizePopover(model: model, gaugeCeiling: gaugeCeiling)
             }
         }
-        ToolbarItem {
+        ToolbarItem(placement: .primaryAction) {
             // The same list preferences offers, not a second one. A rate set
             // here and a rate set there are one setting, and a toolbar that
             // offered 0.25 s while the Sampling tab did not would show an empty
