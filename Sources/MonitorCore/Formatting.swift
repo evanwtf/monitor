@@ -22,6 +22,58 @@ public enum Format {
         return "\(String(format: "%.\(digits)f", magnitude)) \(units[index])\(suffix)"
     }
 
+    /// A plain count, with SI suffixes: `847`, `1.2 M`, `340 k`.
+    ///
+    /// Same decimal thousands and the same digit rule as `bytes`, because the
+    /// two sit beside each other in a legend and a pair of counts that disagree
+    /// about what "k" means is worse than either. A packet total is seven
+    /// figures on a busy minute, and `1234567` is unreadable at a glance and
+    /// far too wide for the slot it has to sit in.
+    public static func count(_ value: Double) -> String {
+        let units = ["", " k", " M", " G", " T"]
+        var magnitude = abs(value)
+        var index = 0
+        while magnitude >= 1000, index < units.count - 1 {
+            magnitude /= 1000
+            index += 1
+        }
+        let digits = magnitude < 10 && index > 0 ? 1 : 0
+        return "\(String(format: "%.\(digits)f", magnitude))\(units[index])"
+    }
+
+    /// How much moved, from a `WindowTotal` in the rate's own base unit.
+    ///
+    /// Applies `MetricUnit.accumulation` and then formats the result — so the
+    /// bits-to-bytes conversion happens in exactly one place on the way to the
+    /// screen, which is what stops a header and anything downstream disagreeing
+    /// about whether 1.4 GB and 11.2 Gbit are the same reading.
+    ///
+    /// Nil for a unit that does not accumulate, so a caller cannot draw
+    /// degree-seconds under a temperature by forgetting to check.
+    public static func total(_ value: Double, unit: MetricUnit) -> String? {
+        guard let accumulation = unit.accumulation else { return nil }
+        let scaled = value * accumulation.scale
+        switch accumulation.unit {
+        case .bytes: return bytes(scaled)
+        case .count: return count(scaled)
+        default: return self.value(scaled, unit: accumulation.unit)
+        }
+    }
+
+    /// The widest reading `total(_:unit:)` is expected to produce, for reserving
+    /// layout width. A floor, exactly like `widestValue`.
+    ///
+    /// The legend is where this matters most: a total climbing from `88 MB` to
+    /// `1.4 GB` must not shove every entry beside it sideways while it is being
+    /// read.
+    public static func widestTotal(unit: MetricUnit) -> String? {
+        guard let accumulation = unit.accumulation else { return nil }
+        switch accumulation.unit {
+        case .count: return "999 M"
+        default: return widestValue(unit: accumulation.unit)
+        }
+    }
+
     /// Throughput is pinned to mega-units and never rescaled: disk in MB/s,
     /// network in Mbit/s, at every magnitude, including 0.02 and 5000.
     ///
