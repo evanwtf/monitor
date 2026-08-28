@@ -361,6 +361,34 @@ less than the card's stated span — one source failed for a stretch while its
 neighbour kept reading — is dimmed. The ordinary case spends no ink saying it
 is ordinary.
 
+### A card with totals gets a table, not a wrapped row
+
+The legend has two shapes, because the cards do. A card of levels — Memory's
+seven slices, five temperature sensors — has nothing to total and keeps
+`FlowLayout`, which spends card height only when the entries genuinely do not
+fit across. A card of rates has a second number per series, and numbers in a
+wrapped row do not line up: the first version put the totals at four different
+left edges down the same card.
+
+So those cards draw a small `Grid` instead: swatch, name, rate, total, with the
+totals column **headed and right-justified**. Right-justified because these are
+magnitudes, and a magnitude is read by where its last digit sits — `104 MB` over
+`48 MB` aligned on the left puts the hundreds above the tens and hides the
+difference the column exists to show. Headed because a second bare number beside
+a rate does not say what it is: the span beside the title says *how long*, and
+the heading says *of what*.
+
+The table always goes under the title, never beside it. `ViewThatFits` is the
+right question for a wrapping row and the wrong one for a column of figures —
+pushed to the right of the title on a wide card, the heading floats in the
+middle of the header with nothing under it that reads as a table.
+
+Only five groups accumulate, and every one of them has exactly two series, so
+the table is three rows at its tallest. The reserved-width slot survives into
+it: a `Grid` sizes a column to its widest cell, so without the reservation the
+column would resize as a total crossed a magnitude and shuffle the card while
+somebody read it.
+
 ### A gap nobody sampled is not traffic
 
 `maximumGap` is the widest interval one sample may be credited with. A laptop
