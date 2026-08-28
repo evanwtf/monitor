@@ -397,6 +397,16 @@ are no component-level AGENTS.md files.
 
 ## Making Changes
 
+* **One pull request per piece of work, not per commit.** Related changes ship
+  together even when they touch different files and could be described
+  separately. Splitting a session's work into several pull requests is the
+  wrong default here: they end up *stacked* — each based on the one before —
+  and a stacked pull request is not independently reviewable or mergeable, so
+  the split buys none of the review value it looks like it buys. What it costs
+  is real: a squash-merge and a **release** each, for one change. Keep the
+  separable history in the commits, where it is free.
+  Split only when the parts are genuinely independent of each other and could
+  land in either order.
 * Make minimal, focused changes; avoid broad refactors unless requested.
 * Preserve existing architecture and patterns.
 * Don't introduce new dependencies without justification.
