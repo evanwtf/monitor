@@ -22,21 +22,61 @@ public enum ChartAxis {
     /// somebody would write down.
     static let strides: [TimeInterval] = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600]
 
-    /// Points of card per label, measured off the narrowest column the grid
-    /// makes. Two is the fewest that says anything; past five they are closer
-    /// together than the eye needs on a chart this size.
-    static let spacing = 78.0
+    /// Two labels is what the axis wants; five is as dense as it should ever
+    /// get, because past that they are closer together than the eye needs on a
+    /// chart this size. Neither is a guarantee — see `marks`.
     static let fewest = 2
     static let most = 5
 
-    /// The y-axis and its labels, which the measured width includes and the
-    /// time labels cannot use.
-    static let axisAllowance = 50.0
+    /// The widest label each format produces, **measured** rather than
+    /// estimated: SF Rounded at `Theme.Layout.timeLabel`, worst case
+    /// "18:52:30" and "18:52".
+    ///
+    /// The two differ by a third, and that is the fact the arithmetic used to
+    /// miss. Budgeting every stride at the with-seconds width made the coarse
+    /// strides — the ones with the narrow labels, the ones a cramped card
+    /// wants — look as expensive as the fine ones, so the axis never reached
+    /// for them.
+    static let secondsLabelWidth = 32.0
+    static let minuteLabelWidth = 20.0
+    /// Turned on its side a label costs its line height instead, whatever it
+    /// says.
+    static let rotatedLabelWidth = 10.0
+    /// The clear space between two labels. Below about this they stop reading
+    /// as two numbers and start reading as one long one.
+    static let gutter = 8.0
 
-    /// How many labels this card has room for.
-    public static func maximumTicks(width: Double) -> Int {
-        guard width.isFinite else { return fewest }
-        return max(fewest, min(most, Int((width - axisAllowance) / spacing)))
+    /// Points of plot one label needs, including the gutter after it.
+    public static func spacing(showsSeconds: Bool, rotated: Bool) -> Double {
+        let label = rotated
+            ? rotatedLabelWidth
+            : (showsSeconds ? secondsLabelWidth : minuteLabelWidth)
+        return label + gutter
+    }
+
+    /// How many labels of one format fit across a plot.
+    ///
+    /// `width` is the **plot**, not the card and not the chart. The y-axis and
+    /// its labels are outside it and they are much wider on "20 MB/s" than on
+    /// "0%" — and the cards with the longest numbers are the ones whose plots
+    /// are narrowest. This used to take the chart's width less a flat 50-point
+    /// allowance, which is right for one card and optimistic for exactly the
+    /// cards that could least afford optimism.
+    public static func maximumTicks(
+        width: Double, showsSeconds: Bool = true, rotated: Bool = false
+    ) -> Int {
+        guard width.isFinite, width > 0 else { return 1 }
+        let fit = Int(width / spacing(showsSeconds: showsSeconds, rotated: rotated))
+        return max(1, min(most, fit))
+    }
+
+    /// The most labels a stride can produce in a window of this length.
+    ///
+    /// A window of length L holds either floor(L / stride) boundaries or one
+    /// more, depending on where it happens to sit. The axis has to survive the
+    /// worse of those, since the window slides.
+    static func worstCaseCount(usable: TimeInterval, stride: TimeInterval) -> Int {
+        Int((usable / stride).rounded(.down)) + 1
     }
 
     /// Ticks are held this far in from each edge of the window.
@@ -53,46 +93,56 @@ public enum ChartAxis {
         public let stride: TimeInterval
     }
 
-    /// The interval to label at: as many labels as the card has room for, and
-    /// never fewer than two.
+    /// The interval to label at: the finest one whose own labels fit the plot.
     ///
     /// Chosen from the *length* of the window, not from where it happens to
     /// sit. The ticks themselves are absolute instants, so the exact count
     /// drifts by one as the window slides — but the interval must not, or the
     /// axis restyles itself every few seconds. Picking the interval by counting
-    /// the ticks it actually produced was the previous version, and on a narrow
+    /// the ticks it actually produced was an earlier version, and on a narrow
     /// ten-minute card it flipped between 300 s and 120 s as the window moved,
     /// so the labels jumped between two and five.
     ///
-    /// Two rules, in this order:
+    /// **Fitting wins over the two-label floor**, which reverses the rule this
+    /// used to follow. That rule said slightly tight labels beat a bare axis,
+    /// and it was right about "slightly tight" and wrong about what the
+    /// arithmetic produced: on a 160-point plot the axis drew four labels 32
+    /// points wide with their centres 40 apart, and at the narrowest card they
+    /// overlapped outright. Labels that collide are not slightly tight — they
+    /// are unreadable, and worse than the sparse axis the old rule was
+    /// avoiding. Two labels are still what it reaches for, because the walk
+    /// goes finest first and a finer stride is a denser axis; a window that
+    /// cannot show two without them touching now shows one rather than two on
+    /// top of each other. **Turning the labels sideways is how to have both**,
+    /// which is what the setting is for.
     ///
-    /// 1. **Never fewer than two labels.** One lonely label says nothing about
-    ///    the span you are looking at.
-    /// 2. **Never more than the card has room for**, where that is compatible
-    ///    with the first. On a narrow card showing ten minutes it is not, and
-    ///    slightly tight labels beat a bare axis.
+    /// Each stride is costed at the width of *its own* labels. A stride of a
+    /// minute or more shows no seconds, so it needs a third less room than a
+    /// finer one — which is exactly why a cramped card can still carry a
+    /// readable axis.
     public static func marks(
-        from start: TimeInterval, to end: TimeInterval, maximumTicks: Int
+        from start: TimeInterval,
+        to end: TimeInterval,
+        plotWidth: Double,
+        rotated: Bool = false
     ) -> Marks {
         guard end > start else { return Marks(times: [], stride: strides[0]) }
         let usable = (end - start) * (1 - 2 * edgeFraction)
+        let width = plotWidth.isFinite ? max(0, plotWidth) : 0
 
-        // The coarsest interval that still fits `fewest` of itself in the
-        // window, whatever the window's phase.
-        let guaranteeing = strides.last { (usable / $0).rounded(.down) >= Double(fewest) }
-            ?? strides[0]
-        // The finest interval that cannot produce more labels than fit. A
-        // window of length L holds either floor(L / stride) boundaries or one
-        // more, depending on its phase, so the worst case is that floor plus
-        // one.
-        let capping = strides.first {
-            (usable / $0).rounded(.down) + 1 <= Double(maximumTicks)
-        } ?? strides[strides.count - 1]
+        // Finest first, so the first that fits is the densest that fits.
+        let stride = strides.first { candidate in
+            let count = worstCaseCount(usable: usable, stride: candidate)
+            guard count <= most else { return false }
+            let each = spacing(
+                showsSeconds: showsSeconds(stride: candidate), rotated: rotated
+            )
+            return Double(count) * each <= width
+        }
+            // Nothing fits: the coarsest interval there is, which is also the
+            // one that asks for the least room.
+            ?? strides[strides.count - 1]
 
-        // The finer of the two. Finer than `guaranteeing` still guarantees two,
-        // so this respects the room whenever the room allows two, and gives up
-        // on the room rather than on the two when it does not.
-        let stride = Swift.min(guaranteeing, capping)
         return Marks(times: times(from: start, to: end, stride: stride), stride: stride)
     }
 

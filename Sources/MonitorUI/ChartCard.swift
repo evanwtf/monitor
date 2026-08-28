@@ -38,6 +38,9 @@ public struct ChartCard: View {
     /// `mirror` and `stacked` are — whether to show totals is a preference, and
     /// a card does not read preferences.
     public var totalGap: TimeInterval?
+    /// Draw the time labels on their side. Passed in for the same reason the
+    /// three above are: it is a preference, and a card does not read them.
+    public var rotatesTimeLabels: Bool = false
 
     public init(
         title: String,
@@ -47,7 +50,8 @@ public struct ChartCard: View {
         plotHeight: Double = Theme.Layout.chartMinHeight,
         mirror: MetricPair? = nil,
         stacked: [MetricID] = [],
-        totalGap: TimeInterval? = nil
+        totalGap: TimeInterval? = nil,
+        rotatesTimeLabels: Bool = false
     ) {
         self.title = title
         self.series = series
@@ -60,6 +64,7 @@ public struct ChartCard: View {
         // baseline would be nonsense, so it cannot happen by accident either.
         self.stacked = mirror == nil ? stacked : []
         self.totalGap = totalGap
+        self.rotatesTimeLabels = rotatesTimeLabels
     }
 
     public var body: some View {
@@ -367,18 +372,26 @@ public struct ChartCard: View {
             }
         }
         .chartXAxis {
-            AxisMarks(values: xTicks) { _ in
+            AxisMarks(values: xTicks) { value in
                 AxisGridLine().foregroundStyle(Theme.panelEdge.opacity(0.3))
-                AxisValueLabel(format: timeFormat, centered: true)
-                    .font(.system(size: Theme.Layout.axisLabel, design: .rounded))
-                    .foregroundStyle(Theme.label)
+                AxisValueLabel(centered: true) {
+                    if let date = value.as(Date.self) { timeLabel(date) }
+                }
             }
         }
-        .background(
-            GeometryReader { proxy in
-                Color.clear.preference(key: PlotWidthKey.self, value: proxy.size.width)
+        // `chartBackground` rather than an overlay: it hands over the same
+        // proxy and sits *under* the chart, where it cannot swallow the
+        // mouse-down that a tile's drag gesture needs. An overlay here is the
+        // trap `ReorderDrag` documents.
+        .chartBackground { proxy in
+            GeometryReader { geometry in
+                // The plot rect, not the chart's own width. The y-axis and its
+                // labels are outside it, and they are much wider on "20 MB/s"
+                // than on "0%" — which is exactly when the room runs out.
+                let width = proxy.plotFrame.map { geometry[$0].width } ?? geometry.size.width
+                Color.clear.preference(key: PlotWidthKey.self, value: width)
             }
-        )
+        }
         .onPreferenceChange(PlotWidthKey.self) { plotWidth = $0 }
         .frame(minHeight: plotHeight)
     }
@@ -397,13 +410,38 @@ public struct ChartCard: View {
         }
     }
 
+    /// One time label, upright or on its side.
+    ///
+    /// `rotationEffect` turns the glyphs and not the layout, so the rotated
+    /// case needs `fixedSize` to stop the frame squeezing the text first, and
+    /// then a frame of its own — otherwise the axis reserves the label's width
+    /// and none of its height, and the turned text draws over the chart.
+    @ViewBuilder
+    private func timeLabel(_ date: Date) -> some View {
+        let text = Text(date, format: timeFormat)
+            .font(.system(size: Theme.Layout.timeLabel, design: .rounded))
+            .foregroundStyle(Theme.label)
+            .lineLimit(1)
+        if rotatesTimeLabels {
+            text
+                .fixedSize()
+                .rotationEffect(.degrees(-90))
+                .frame(
+                    width: Theme.Layout.timeLabelRotated.width,
+                    height: Theme.Layout.timeLabelRotated.height
+                )
+        } else {
+            text
+        }
+    }
+
     /// The labelled instants and their spacing — see `ChartAxis`, which is
     /// where the arithmetic lives and where it is tested.
     private var marks: ChartAxis.Marks {
         let range = xRange
         return ChartAxis.marks(
             from: range.start, to: range.end,
-            maximumTicks: ChartAxis.maximumTicks(width: plotWidth)
+            plotWidth: plotWidth, rotated: rotatesTimeLabels
         )
     }
 
@@ -411,12 +449,14 @@ public struct ChartCard: View {
         marks.times.map { Date(timeIntervalSince1970: $0) }
     }
 
-    /// No AM/PM. A card shows at most ten minutes of history, so which half of
-    /// the day it is was never in question, and those two characters were most
-    /// of what made the labels collide.
+    /// No AM/PM, and no leading zero on the hour. A card shows at most ten
+    /// minutes of history, so which half of the day it is was never in
+    /// question, and "0" in "08:52:30" is a character that carries nothing
+    /// across eight labels that have no room for it. The minutes and seconds
+    /// keep both digits: those are positional, and "8:5:3" is not a time.
     private var timeFormat: Date.FormatStyle {
         let base = Date.FormatStyle.dateTime
-            .hour(.twoDigits(amPM: .omitted))
+            .hour(.defaultDigits(amPM: .omitted))
             .minute(.twoDigits)
         return ChartAxis.showsSeconds(stride: marks.stride) ? base.second(.twoDigits) : base
     }

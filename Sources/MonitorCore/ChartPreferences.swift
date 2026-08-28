@@ -98,14 +98,25 @@ public struct ChartPreferences: Codable, Equatable, Sendable {
     /// number nobody can find is worth less than a header that reflows.
     public var showsTotals: Bool
 
+    /// Turn the time labels on their side.
+    ///
+    /// Off by default: horizontal is easier to read, and on a card with room
+    /// for them it is the right answer. Turned, a label costs its line height
+    /// instead of its width, so a narrow card fits five times where it fitted
+    /// two — which is the trade somebody running a dense panel wants and
+    /// somebody running three big cards does not.
+    public var rotatesTimeLabels: Bool
+
     public init(
         mirrorsPairs: Bool = false,
         stacksParts: Bool = false,
-        showsTotals: Bool = true
+        showsTotals: Bool = true,
+        rotatesTimeLabels: Bool = false
     ) {
         self.mirrorsPairs = mirrorsPairs
         self.stacksParts = stacksParts
         self.showsTotals = showsTotals
+        self.rotatesTimeLabels = rotatesTimeLabels
     }
 
     public static let `default` = ChartPreferences()
@@ -128,6 +139,7 @@ public struct ChartPreferences: Codable, Equatable, Sendable {
         case mirrorsPairs
         case stacksParts
         case showsTotals
+        case rotatesTimeLabels
     }
 
     /// `decodeIfPresent`, so a value written before a setting existed still
@@ -137,10 +149,12 @@ public struct ChartPreferences: Codable, Equatable, Sendable {
         let mirrors = try container.decodeIfPresent(Bool.self, forKey: .mirrorsPairs)
         let stacks = try container.decodeIfPresent(Bool.self, forKey: .stacksParts)
         let totals = try container.decodeIfPresent(Bool.self, forKey: .showsTotals)
+        let rotates = try container.decodeIfPresent(Bool.self, forKey: .rotatesTimeLabels)
         self.init(
             mirrorsPairs: mirrors ?? ChartPreferences.default.mirrorsPairs,
             stacksParts: stacks ?? ChartPreferences.default.stacksParts,
-            showsTotals: totals ?? ChartPreferences.default.showsTotals
+            showsTotals: totals ?? ChartPreferences.default.showsTotals,
+            rotatesTimeLabels: rotates ?? ChartPreferences.default.rotatesTimeLabels
         )
     }
 }

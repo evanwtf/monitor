@@ -393,7 +393,8 @@ public struct DashboardView: View {
             stacked: model.charts.stack(for: drawn.map(\.descriptor)),
             // Nil switches totals off. The gap comes from the model because
             // that is where the sampling clock is.
-            totalGap: model.charts.showsTotals ? model.totalGap : nil
+            totalGap: model.charts.showsTotals ? model.totalGap : nil,
+            rotatesTimeLabels: model.charts.rotatesTimeLabels
         )
     }
 

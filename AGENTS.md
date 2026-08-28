@@ -208,7 +208,22 @@ are no component-level AGENTS.md files.
   window's **length alone, never its position** — the count drifts by one as a
   tick scrolls off, but an interval chosen by counting actual ticks flips
   between rungs as the window slides and the axis restyles itself every few
-  seconds. No AM/PM; seconds only when the interval is under a minute.
+  seconds. No AM/PM, and no leading zero on the hour; seconds only when the
+  interval is under a minute.
+  **Rule 2 now wins over rule 1**, which reverses the original order: labels
+  that collide are unreadable, which is worse than the sparse axis the old rule
+  avoided. Three things had to be right together, and getting one wrong put
+  four overlapping labels on a card with room for two. The room is the **plot**,
+  read from `chartBackground`'s proxy — never `chartOverlay`, which would
+  swallow a tile's drag; a flat allowance for the y-axis is wrong on exactly the
+  cards whose numbers are longest. Each stride is costed at the width of **its
+  own** labels, because a stride of a minute or more shows no seconds and needs
+  a third less room. And the widths are **measured**, not estimated — 32 points
+  with seconds, 20 without, 10 rotated. **Turn the time labels sideways** in the
+  Charts tab is how a narrow card gets both the fit and the two labels: rotated,
+  a label costs its line height instead of its width. `rotationEffect` turns the
+  glyphs and not the layout, so it needs `fixedSize` and then a frame, or the
+  axis reserves no height and the text draws over the chart.
 - **A card's header fits, it does not count.** Title beside legend when it fits,
   stacked when it does not, decided by `ViewThatFits`. A count of series cannot
   know how wide the words are, and since the title is `fixedSize` a header that

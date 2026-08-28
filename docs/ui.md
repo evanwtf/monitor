@@ -404,6 +404,56 @@ looking at, and none says less.
 `ChartAxis` in `MonitorCore` holds the arithmetic, which is why it is testable
 without a window.
 
+### The labels must not touch, and that beats having two of them
+
+The rule used to be the other way round: never fewer than two labels, and
+slightly tight labels beat a bare axis. It was right about "slightly tight" and
+wrong about what the arithmetic produced. On a 160-point plot the axis drew four
+labels 32 points wide with their centres 40 points apart, and at the narrowest
+card they overlapped outright — `08:52:3008:53:0008:53:30`. Labels that collide
+are not slightly tight; they are unreadable, and worse than the sparse axis the
+old rule was avoiding.
+
+Three things were wrong at once, and all three are fixed:
+
+- **The room was measured off the chart, not the plot.** A flat 50-point
+  allowance stood in for the y-axis, which is right for one card and generous
+  for every card whose numbers are long — and those are the cards whose plots
+  are narrowest. `chartBackground` hands over the real plot rect instead.
+  Not `chartOverlay`: an overlay sits above the content and would swallow the
+  mouse-down a tile's drag needs, which is the trap `ReorderDrag` documents.
+- **Every stride was costed at the same label width.** A stride of a minute or
+  more shows no seconds, so "8:52" needs a third less room than "8:52:30". The
+  measured figures are 20 points against 32, at `Theme.Layout.timeLabel`, and
+  budgeting the coarse strides at the wide figure made the axis unable to reach
+  for the one a cramped card wanted. Each candidate is now costed at the width
+  of its own labels.
+- **The labels were wider than they needed to be.** They have their own size,
+  smaller than the y-axis labels beside them: there are more of them, they are
+  longer, and a y-axis label has a whole row to itself. The hour lost its
+  leading zero too — "0" in "08:52:30" carries nothing across four labels with
+  no room for it. Minutes and seconds keep both digits, because those are
+  positional and "8:5:3" is not a time.
+
+Two labels are still what the axis reaches for: the walk goes finest first, so
+the first stride that fits is the densest that fits. What is gone is the
+promise. A narrow card showing two minutes has no stride both coarse enough to
+fit and fine enough to guarantee two, and it now shows one label rather than two
+on top of each other.
+
+### Sideways labels
+
+**Turn the time labels sideways** in the Charts tab is how to have both. On its
+side a label costs its line height rather than its width — 10 points against 32
+— so the narrowest card fits four times where upright it fits two. Off by
+default, because horizontal is easier to read and on every card but the smallest
+there is room for it.
+
+`rotationEffect` turns the glyphs and not the layout, so the rotated label needs
+`fixedSize` to stop its frame squeezing the text first, and then a frame of its
+own. Without that the axis reserves the label's width and none of its height,
+and the turned text draws over the chart.
+
 ### The interval comes from the window's length, never its position
 
 The ticks are absolute instants, so how many land inside the window depends on

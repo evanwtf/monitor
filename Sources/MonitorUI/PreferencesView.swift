@@ -237,6 +237,22 @@ struct ChartsTab: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
+
+            Section {
+                Toggle("Turn the time labels sideways", isOn: $model.charts.rotatesTimeLabels)
+            } footer: {
+                Text(
+                    "A label lying down costs its width, and a narrow card runs "
+                        + "out of that long before it runs out of chart. Stood "
+                        + "on end it costs only its height, so the same card "
+                        + "fits five times where it fitted two. Off by default, "
+                        + "because horizontal is easier to read wherever there "
+                        + "is room for it."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .formStyle(.grouped)
     }

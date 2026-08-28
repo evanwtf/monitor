@@ -66,6 +66,14 @@ public enum Theme {
         public static let cardTitle = 12.0
         public static let cardLegend = 10.0
         public static let axisLabel = 8.0
+        /// The time labels along the bottom, smaller than the y-axis beside
+        /// them. There are more of them, they are longer, and they are the ones
+        /// that collide: a y-axis label has a whole row to itself.
+        public static let timeLabel = 7.0
+        /// The box a rotated time label is laid out in. `rotationEffect` turns
+        /// the glyphs and not the layout, so without a frame the axis reserves
+        /// the width of the text and none of its height.
+        public static let timeLabelRotated = CGSize(width: 11, height: 40)
         /// The dial's label, which sits under the dial rather than on its face:
         /// at 130pt across there is no room on the face for "Network Out"
         /// without it running into the ticks.

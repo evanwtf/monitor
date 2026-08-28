@@ -143,6 +143,9 @@ struct ChartPreferencesTests {
         // it". A total adds a number beside one already there rather than
         // changing what the chart means, so it does not need switching on.
         #expect(ChartPreferences.default.showsTotals)
+        // Horizontal is easier to read wherever there is room for it, and on
+        // every card but the narrowest there is.
+        #expect(ChartPreferences.default.rotatesTimeLabels == false)
         #expect(ChartPreferences.default.mirror(for: [netIn, netOut]) == nil)
         #expect(ChartPreferences.default.stack(for: [app, wired, free]).isEmpty)
     }
@@ -176,7 +179,8 @@ struct ChartPreferencesTests {
     @Test("Round-trips through Codable")
     func codable() throws {
         let preferences = ChartPreferences(
-            mirrorsPairs: true, stacksParts: true, showsTotals: true
+            mirrorsPairs: true, stacksParts: true,
+            showsTotals: true, rotatesTimeLabels: true
         )
         let data = try JSONEncoder().encode(preferences)
         #expect(try JSONDecoder().decode(ChartPreferences.self, from: data) == preferences)
@@ -196,6 +200,7 @@ struct ChartPreferencesTests {
         // An upgrade from a version without the key gets the new default, not
         // false: a missing key means "never asked", not "switched off".
         #expect(decoded.showsTotals)
+        #expect(decoded.rotatesTimeLabels == false)
     }
 }
 
