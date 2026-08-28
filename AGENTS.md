@@ -202,6 +202,14 @@ are no component-level AGENTS.md files.
   not `visible` — the sum needs the sample just outside the window's left edge
   to measure the interval straddling it. `AppModel.totalGap` is four ticks of
   the master clock, so it follows the Sampling tab rather than assuming 0.5 s.
+  **A card with totals draws a `Grid`, not a `FlowLayout`** — swatch, name,
+  rate, total, with the totals column headed and **right-justified**, because a
+  magnitude is read by where its last digit sits and wrapped entries put them at
+  four different left edges. It sits under the title, never beside it:
+  `ViewThatFits` is the right question for a wrapping row and the wrong one for
+  a column of figures. Cards with nothing to total keep the flow. The reserved
+  slot survives into the table — a `Grid` column sizes to its widest cell, so
+  without it the column resizes whenever a total crosses a magnitude.
 - **The time axis is computed, not automatic.** `ChartAxis` in `MonitorCore`.
   Three rules, and the first two versions traded one for another: a tick is an
   **instant** (10:42:00 sits at 10:42:00 and scrolls left keeping its label —

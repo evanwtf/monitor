@@ -101,14 +101,27 @@ public struct ChartCard: View {
     /// `ViewThatFits` proposes the column's width to the first arrangement and
     /// falls back to the second, so the compact line survives wherever there is
     /// room for it.
+    @ViewBuilder
     private func header(_ totals: [MetricID: WindowTotal.Result]) -> some View {
         let span = totalSpan(totals)
-        return ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 8) {
-                titleText(span: span)
-                Spacer(minLength: 0)
-                legend(totals, span: span)
+        if totals.isEmpty {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 8) {
+                    titleText(span: span)
+                    Spacer(minLength: 0)
+                    legend(totals, span: span)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    titleText(span: span)
+                    legend(totals, span: span)
+                }
             }
+        } else {
+            // A table always goes under the title, never beside it. `ViewThatFits`
+            // is the right question for a wrapping row of entries and the wrong
+            // one for a column of figures: pushed to the right of the title on a
+            // wide card, the Totals heading floats in the middle of the header
+            // with nothing under it that reads as a table.
             VStack(alignment: .leading, spacing: 4) {
                 titleText(span: span)
                 legend(totals, span: span)
@@ -150,79 +163,144 @@ public struct ChartCard: View {
     /// than its children want compresses them, and compressed legend entries
     /// truncate to nothing readable; `FlowLayout` spends card height instead,
     /// which is the cheaper of the two.
+    /// The legend: a wrapping row of entries, or a small table when the card
+    /// has totals to line up.
+    ///
+    /// Two shapes rather than one because the cards differ. A card of levels —
+    /// Memory's seven slices, five temperature sensors — has nothing to total
+    /// and wants `FlowLayout`, which spends card height only when the entries
+    /// genuinely do not fit across. A card of rates has a second number per
+    /// series, and numbers in a wrapped row do not line up: the totals ended up
+    /// at four different left edges down the same card, which is what a column
+    /// is for.
+    ///
+    /// Only five groups accumulate — Disk, Disk Ops, Network, Network Packets,
+    /// Memory Paging — and every one of them has exactly two series, so the
+    /// table is three rows at its tallest.
+    @ViewBuilder
     private func legend(
         _ totals: [MetricID: WindowTotal.Result], span: TimeInterval?
     ) -> some View {
+        if totals.isEmpty {
+            flowLegend
+        } else {
+            tableLegend(totals, span: span)
+        }
+    }
+
+    /// Entries wrapped across the card, for a legend with no totals column.
+    ///
+    /// An `HStack` given less width than its children want compresses them, and
+    /// compressed entries truncate to nothing readable; `FlowLayout` spends card
+    /// height instead, which is the cheaper of the two.
+    private var flowLegend: some View {
         FlowLayout(horizontalSpacing: 10, verticalSpacing: 3) {
             ForEach(Array(series.enumerated()), id: \.offset) { index, entry in
                 if let latest = entry.points.last {
-                    legendEntry(
-                        entry.descriptor,
-                        index: index,
-                        latest: latest,
-                        total: totals[entry.descriptor.id],
-                        span: span
-                    )
+                    HStack(spacing: 4) {
+                        swatch(entry.descriptor, index: index)
+                        nameText(entry.descriptor)
+                        valueText(entry.descriptor, latest: latest)
+                    }
                 }
             }
         }
+        .font(.system(size: Theme.Layout.cardLegend, design: .monospaced))
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// One legend entry: colour swatch, series name, current value.
+    /// Series down the left, rate then total across, with the totals column
+    /// headed and right-justified.
     ///
-    /// Monospaced, and the value sits in a slot pre-sized to the widest reading
-    /// its unit can produce. Both matter for the same reason: a legend whose
-    /// entries change width is a legend that shuffles sideways while you are
-    /// reading it. A monospaced face stops individual digits from changing width
-    /// as they change value; the reserved slot stops the *number of* digits from
-    /// moving everything else, which is what made a series climbing from `1%` to
-    /// `100%` appear to wiggle the whole card.
-    ///
-    /// `.monospacedDigit()` is not enough on its own — it equalises digit widths
-    /// but reserves nothing, so `1%` and `100%` still occupy different space.
-    private func legendEntry(
-        _ descriptor: MetricDescriptor,
-        index: Int,
-        latest: Sample,
-        total: WindowTotal.Result?,
-        span: TimeInterval?
+    /// Right-justified because these are magnitudes, and magnitudes are read by
+    /// the position of their last digit: `104 MB` over `48 MB` aligned on the
+    /// left puts the hundreds above the tens and hides the difference the column
+    /// exists to show. Headed because a second bare number beside a rate does
+    /// not say what it is — the span beside the card's title says *how long*,
+    /// and this says *of what*.
+    private func tableLegend(
+        _ totals: [MetricID: WindowTotal.Result], span: TimeInterval?
     ) -> some View {
-        HStack(spacing: 4) {
-            // Filled for a band, hollow for a line — the same distinction the
-            // chart makes, so the key does not have to be guessed at.
-            Group {
-                if stacked.isEmpty || isBand(descriptor) {
-                    Circle().fill(Theme.seriesColor(index))
-                } else {
-                    Circle().strokeBorder(Theme.seriesColor(index), lineWidth: 1.5)
+        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 3) {
+            GridRow {
+                // One merged cell across the swatch, name and rate columns: a
+                // merged cell adds nothing to their widths, so the heading
+                // cannot widen the table it labels.
+                Color.clear.frame(width: 0, height: 0).gridCellColumns(3)
+                Text("Totals")
+                    .foregroundStyle(Theme.label)
+                    .lineLimit(1)
+                    .gridColumnAlignment(.trailing)
+            }
+            ForEach(Array(series.enumerated()), id: \.offset) { index, entry in
+                if let latest = entry.points.last {
+                    GridRow {
+                        swatch(entry.descriptor, index: index)
+                        nameText(entry.descriptor)
+                        valueText(entry.descriptor, latest: latest)
+                        totalText(
+                            entry.descriptor,
+                            total: totals[entry.descriptor.id],
+                            span: span
+                        )
+                    }
                 }
             }
-            .frame(width: 7, height: 7)
-            Text(descriptor.name)
-                .foregroundStyle(Theme.label)
-                .lineLimit(1)
-            ZStack(alignment: .leading) {
-                // Reserves the slot. A ZStack takes the width of its widest
-                // child, so a reading wider than the reservation grows the slot
-                // rather than being clipped — the reservation is a floor.
-                Text(Format.widestValue(unit: descriptor.unit))
-                    .hidden()
-                Text(Format.value(latest.value, unit: descriptor.unit))
-                    .foregroundStyle(Theme.readout)
-                    .lineLimit(1)
-            }
-            totalText(descriptor, total: total, span: span)
         }
         .font(.system(size: Theme.Layout.cardLegend, design: .monospaced))
+        .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// How much moved, in its own reserved slot beside how fast it is moving.
+    /// Filled for a band, hollow for a line — the same distinction the chart
+    /// makes, so the key does not have to be guessed at.
+    private func swatch(_ descriptor: MetricDescriptor, index: Int) -> some View {
+        Group {
+            if stacked.isEmpty || isBand(descriptor) {
+                Circle().fill(Theme.seriesColor(index))
+            } else {
+                Circle().strokeBorder(Theme.seriesColor(index), lineWidth: 1.5)
+            }
+        }
+        .frame(width: 7, height: 7)
+    }
+
+    private func nameText(_ descriptor: MetricDescriptor) -> some View {
+        Text(descriptor.name)
+            .foregroundStyle(Theme.label)
+            .lineLimit(1)
+    }
+
+    /// The current reading, in a slot pre-sized to the widest its unit can
+    /// produce.
+    ///
+    /// Monospaced and reserved for the same reason: a legend whose entries
+    /// change width is a legend that shuffles sideways while you are reading it.
+    /// A monospaced face stops individual digits from changing width as they
+    /// change value; the reserved slot stops the *number of* digits from moving
+    /// everything else, which is what made a series climbing from `1%` to `100%`
+    /// appear to wiggle the whole card. `.monospacedDigit()` is not enough on
+    /// its own — it equalises digit widths but reserves nothing.
+    private func valueText(_ descriptor: MetricDescriptor, latest: Sample) -> some View {
+        ZStack(alignment: .leading) {
+            // A ZStack takes the width of its widest child, so a reading wider
+            // than the reservation grows the slot rather than being clipped —
+            // the reservation is a floor.
+            Text(Format.widestValue(unit: descriptor.unit)).hidden()
+            Text(Format.value(latest.value, unit: descriptor.unit))
+                .foregroundStyle(Theme.readout)
+                .lineLimit(1)
+        }
+    }
+
+    /// How much moved, right-justified under the Totals heading.
     ///
     /// Dimmed when this series covers materially less of the window than the
     /// span printed beside the title — one source failed for a stretch while
     /// its neighbour on the card kept reading. The ordinary case, where every
     /// series covers the same span, spends no ink saying so.
+    ///
+    /// The slot is reserved here too, and its contents pushed right, so the
+    /// digits stay in one column as their magnitude changes.
     @ViewBuilder
     private func totalText(
         _ descriptor: MetricDescriptor, total: WindowTotal.Result?, span: TimeInterval?
@@ -232,12 +310,16 @@ public struct ChartCard: View {
            let widest = Format.widestTotal(unit: descriptor.unit)
         {
             let isShort = span.map { $0 - total.covered > (totalGap ?? 0) } ?? false
-            ZStack(alignment: .leading) {
+            ZStack(alignment: .trailing) {
                 Text(widest).hidden()
                 Text(text)
                     .foregroundStyle(isShort ? Theme.label : Theme.readout)
                     .lineLimit(1)
             }
+        } else {
+            // A series on a card that has totals but cannot produce one of its
+            // own still needs its cell, or the row below slides up a column.
+            Color.clear.frame(width: 0, height: 0)
         }
     }
 
