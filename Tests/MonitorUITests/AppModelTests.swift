@@ -316,11 +316,10 @@ struct AppModelTotalsTests {
         #expect(model.totalGap == 8)
     }
 
-    @Test("Totals are off until they are switched on")
-    func offByDefault() {
-        // Same default as mirroring and stacking, and for a version of the same
-        // reason: switching it on reflows headers onto two lines, and a card
-        // that changes shape on upgrade is worse than one somebody switches on.
-        #expect(Self.makeModel().charts.showsTotals == false)
+    @Test("Totals are on without being asked for")
+    func onByDefault() {
+        // Unlike mirroring and stacking beside it. Those change what the
+        // picture means; this adds a number next to one already there.
+        #expect(Self.makeModel().charts.showsTotals)
     }
 }

@@ -135,11 +135,14 @@ struct ChartStackTests {
 
 @Suite("ChartPreferences")
 struct ChartPreferencesTests {
-    @Test("Every setting is off until it is switched on")
-    func offByDefault() {
+    @Test("The two that change the picture are off; the one that adds a number is on")
+    func defaults() {
         #expect(ChartPreferences.default.mirrorsPairs == false)
         #expect(ChartPreferences.default.stacksParts == false)
-        #expect(ChartPreferences.default.showsTotals == false)
+        // Shipped off, the reaction to the finished feature was "I don't see
+        // it". A total adds a number beside one already there rather than
+        // changing what the chart means, so it does not need switching on.
+        #expect(ChartPreferences.default.showsTotals)
         #expect(ChartPreferences.default.mirror(for: [netIn, netOut]) == nil)
         #expect(ChartPreferences.default.stack(for: [app, wired, free]).isEmpty)
     }
@@ -190,7 +193,9 @@ struct ChartPreferencesTests {
         let decoded = try JSONDecoder().decode(ChartPreferences.self, from: stored)
         #expect(decoded.mirrorsPairs)
         #expect(decoded.stacksParts)
-        #expect(decoded.showsTotals == false)
+        // An upgrade from a version without the key gets the new default, not
+        // false: a missing key means "never asked", not "switched off".
+        #expect(decoded.showsTotals)
     }
 }
 

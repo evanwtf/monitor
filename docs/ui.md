@@ -313,10 +313,13 @@ there.
 ## Totals for the window
 
 **Show totals for the window** in the Charts tab adds a second number to every
-legend entry: how much moved, beside how fast it is moving. Off by default, for
-a narrower version of the reason mirroring and stacking are — those change what
-the picture means, this only adds a number, but it adds one to a header already
-decided by `ViewThatFits`, so switching it on reflows cards onto two lines.
+legend entry: how much moved, beside how fast it is moving. **On by default**,
+unlike mirroring and stacking beside it. It shipped off, to match them, and the
+reaction to the finished feature was "I don't see it". The difference that
+argument missed: those two change what the picture *means*, so a reader who
+never asked for them deserves the chart they had — a total only adds a number
+beside one already there, and a number nobody can find is worth less than a
+header that reflows.
 
 The gap it fills: a dial answers "how hard is this working right now" and a
 chart answers "what has been happening". Neither answers "how much did that

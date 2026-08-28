@@ -90,18 +90,18 @@ public struct ChartPreferences: Codable, Equatable, Sendable {
 
     /// Show how much moved over the window beside how fast it is moving.
     ///
-    /// Off by default, for a narrower reason than the two above. Those change
-    /// what the picture *means*; this only adds a number. But it adds one to
-    /// every entry in a header that is already decided by `ViewThatFits`, so
-    /// switching it on reflows cards onto two lines — which is a card changing
-    /// shape under somebody on upgrade, the thing the other two defaults exist
-    /// to prevent.
+    /// **On by default, unlike the two above**, and the argument for matching
+    /// them lost on first contact: shipped off, the reaction to the finished
+    /// feature was "I don't see it". Mirroring and stacking change what the
+    /// picture *means*, so a reader who never asked for them deserves the chart
+    /// they had; a total only adds a number beside one already there, and a
+    /// number nobody can find is worth less than a header that reflows.
     public var showsTotals: Bool
 
     public init(
         mirrorsPairs: Bool = false,
         stacksParts: Bool = false,
-        showsTotals: Bool = false
+        showsTotals: Bool = true
     ) {
         self.mirrorsPairs = mirrorsPairs
         self.stacksParts = stacksParts
