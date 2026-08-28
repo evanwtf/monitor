@@ -201,6 +201,25 @@ struct TotalFormattingTests {
         #expect(Format.widestTotal(unit: .watts) == nil)
     }
 
+    @Test("A span reads the way the History picker words it")
+    func spans() {
+        // The label sits beside a segmented picker reading exactly these, and
+        // two spellings of one duration on one screen reads as a fault.
+        #expect(Format.span(60) == "1 min")
+        #expect(Format.span(120) == "2 min")
+        #expect(Format.span(300) == "5 min")
+        #expect(Format.span(600) == "10 min")
+    }
+
+    @Test("A span short of a whole minute keeps its seconds")
+    func partialSpans() {
+        // A card 45 s after launch must say so rather than round itself up to
+        // the window it was asked for.
+        #expect(Format.span(45) == "45 s")
+        #expect(Format.span(9.6) == "10 s")
+        #expect(Format.span(90) == "90 s")
+    }
+
     @Test("The reserved slot is at least as wide as the readings it holds")
     func reservationCoversRealValues() {
         // A floor, like widestValue: being wrong here costs a little jitter at

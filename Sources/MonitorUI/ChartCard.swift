@@ -29,6 +29,15 @@ public struct ChartCard: View {
     /// Passed in rather than worked out here, for the same reason `mirror` is:
     /// whether to stack is a preference, and a card does not read preferences.
     public var stacked: [MetricID] = []
+    /// The widest interval one sample may be credited with when totalling, or
+    /// nil to draw no totals at all.
+    ///
+    /// One optional rather than a flag and a number, because neither is any use
+    /// without the other: a total cannot be taken without knowing the sampling
+    /// clock, and the clock belongs to the model. Passed in for the same reason
+    /// `mirror` and `stacked` are — whether to show totals is a preference, and
+    /// a card does not read preferences.
+    public var totalGap: TimeInterval?
 
     public init(
         title: String,
@@ -37,7 +46,8 @@ public struct ChartCard: View {
         isUnavailable: Bool = false,
         plotHeight: Double = Theme.Layout.chartMinHeight,
         mirror: MetricPair? = nil,
-        stacked: [MetricID] = []
+        stacked: [MetricID] = [],
+        totalGap: TimeInterval? = nil
     ) {
         self.title = title
         self.series = series
@@ -49,11 +59,16 @@ public struct ChartCard: View {
         // of a whole, so nothing declares both — but drawing bands below a
         // baseline would be nonsense, so it cannot happen by accident either.
         self.stacked = mirror == nil ? stacked : []
+        self.totalGap = totalGap
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            header
+        // Bound once and passed down rather than read as a computed property
+        // from three places: it walks every series' whole buffer, and the card
+        // redraws on every tick.
+        let totals = totals
+        return VStack(alignment: .leading, spacing: 5) {
+            header(totals)
             if isUnavailable {
                 unavailableNotice
             } else {
@@ -81,30 +96,45 @@ public struct ChartCard: View {
     /// `ViewThatFits` proposes the column's width to the first arrangement and
     /// falls back to the second, so the compact line survives wherever there is
     /// room for it.
-    private var header: some View {
-        ViewThatFits(in: .horizontal) {
+    private func header(_ totals: [MetricID: WindowTotal.Result]) -> some View {
+        let span = totalSpan(totals)
+        return ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 8) {
-                titleText
+                titleText(span: span)
                 Spacer(minLength: 0)
-                legend
+                legend(totals, span: span)
             }
             VStack(alignment: .leading, spacing: 4) {
-                titleText
-                legend
+                titleText(span: span)
+                legend(totals, span: span)
             }
         }
     }
 
-    private var titleText: some View {
-        Text(title)
-            .font(.system(
-                size: Theme.Layout.cardTitle,
-                weight: .semibold,
-                design: .rounded
-            ))
-            .foregroundStyle(Theme.readout)
-            .lineLimit(1)
-            .fixedSize()
+    /// The title, and the span the totals cover when there are any.
+    ///
+    /// Stated once here rather than after every entry. The History picker is
+    /// global, so repeating "/ 2 min" four times down a legend is four copies
+    /// of one fact — and the legend is the part of the card with the least room
+    /// to spare.
+    private func titleText(span: TimeInterval?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(title)
+                .font(.system(
+                    size: Theme.Layout.cardTitle,
+                    weight: .semibold,
+                    design: .rounded
+                ))
+                .foregroundStyle(Theme.readout)
+                .lineLimit(1)
+            if let span {
+                Text(Format.span(span))
+                    .font(.system(size: Theme.Layout.cardLegend, design: .monospaced))
+                    .foregroundStyle(Theme.label)
+                    .lineLimit(1)
+            }
+        }
+        .fixedSize()
     }
 
     /// Current values in the header rather than in a legend below the chart:
@@ -115,11 +145,19 @@ public struct ChartCard: View {
     /// than its children want compresses them, and compressed legend entries
     /// truncate to nothing readable; `FlowLayout` spends card height instead,
     /// which is the cheaper of the two.
-    private var legend: some View {
+    private func legend(
+        _ totals: [MetricID: WindowTotal.Result], span: TimeInterval?
+    ) -> some View {
         FlowLayout(horizontalSpacing: 10, verticalSpacing: 3) {
             ForEach(Array(series.enumerated()), id: \.offset) { index, entry in
                 if let latest = entry.points.last {
-                    legendEntry(entry.descriptor, index: index, latest: latest)
+                    legendEntry(
+                        entry.descriptor,
+                        index: index,
+                        latest: latest,
+                        total: totals[entry.descriptor.id],
+                        span: span
+                    )
                 }
             }
         }
@@ -139,7 +177,11 @@ public struct ChartCard: View {
     /// `.monospacedDigit()` is not enough on its own — it equalises digit widths
     /// but reserves nothing, so `1%` and `100%` still occupy different space.
     private func legendEntry(
-        _ descriptor: MetricDescriptor, index: Int, latest: Sample
+        _ descriptor: MetricDescriptor,
+        index: Int,
+        latest: Sample,
+        total: WindowTotal.Result?,
+        span: TimeInterval?
     ) -> some View {
         HStack(spacing: 4) {
             // Filled for a band, hollow for a line — the same distinction the
@@ -165,8 +207,33 @@ public struct ChartCard: View {
                     .foregroundStyle(Theme.readout)
                     .lineLimit(1)
             }
+            totalText(descriptor, total: total, span: span)
         }
         .font(.system(size: Theme.Layout.cardLegend, design: .monospaced))
+    }
+
+    /// How much moved, in its own reserved slot beside how fast it is moving.
+    ///
+    /// Dimmed when this series covers materially less of the window than the
+    /// span printed beside the title — one source failed for a stretch while
+    /// its neighbour on the card kept reading. The ordinary case, where every
+    /// series covers the same span, spends no ink saying so.
+    @ViewBuilder
+    private func totalText(
+        _ descriptor: MetricDescriptor, total: WindowTotal.Result?, span: TimeInterval?
+    ) -> some View {
+        if let total,
+           let text = Format.total(total.value, unit: descriptor.unit),
+           let widest = Format.widestTotal(unit: descriptor.unit)
+        {
+            let isShort = span.map { $0 - total.covered > (totalGap ?? 0) } ?? false
+            ZStack(alignment: .leading) {
+                Text(widest).hidden()
+                Text(text)
+                    .foregroundStyle(isShort ? Theme.label : Theme.readout)
+                    .lineLimit(1)
+            }
+        }
     }
 
     private var unavailableNotice: some View {
@@ -195,6 +262,40 @@ public struct ChartCard: View {
         return series.map { entry in
             (entry.descriptor, entry.points.filter { $0.timestamp >= range.start })
         }
+    }
+
+    // MARK: - Totals
+
+    /// How much moved over the window, per series, in the rate's own base unit.
+    ///
+    /// Reads `series` rather than `visible`: `WindowTotal` needs the sample just
+    /// *before* the window's left edge to measure the partial interval that
+    /// straddles it, and `visible` has already thrown that one away.
+    private var totals: [MetricID: WindowTotal.Result] {
+        guard let totalGap else { return [:] }
+        let end = xRange.end
+        var results: [MetricID: WindowTotal.Result] = [:]
+        for entry in series where entry.descriptor.unit.accumulation != nil {
+            results[entry.descriptor.id] = WindowTotal.total(
+                of: entry.points, window: window, now: end, maximumGap: totalGap
+            )
+        }
+        return results
+    }
+
+    /// The span printed beside the title: the window when the card really has
+    /// it, and what the card actually has when it does not.
+    ///
+    /// Ten seconds after launch the buffer holds ten seconds, and "2 min" over
+    /// a number covering a twelfth of that is the quiet kind of wrong. The
+    /// tolerance is one `totalGap`, because a card is never going to cover its
+    /// window to the microsecond and "119 s" beside a picker reading "2 min"
+    /// reads as a fault rather than as precision.
+    private func totalSpan(_ totals: [MetricID: WindowTotal.Result]) -> TimeInterval? {
+        guard let totalGap, let longest = totals.values.map(\.covered).max() else {
+            return nil
+        }
+        return window - longest > totalGap ? longest : window
     }
 
     private var chart: some View {

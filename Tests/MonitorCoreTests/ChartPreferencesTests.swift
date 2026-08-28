@@ -135,10 +135,11 @@ struct ChartStackTests {
 
 @Suite("ChartPreferences")
 struct ChartPreferencesTests {
-    @Test("Both settings are off until they are switched on")
+    @Test("Every setting is off until it is switched on")
     func offByDefault() {
         #expect(ChartPreferences.default.mirrorsPairs == false)
         #expect(ChartPreferences.default.stacksParts == false)
+        #expect(ChartPreferences.default.showsTotals == false)
         #expect(ChartPreferences.default.mirror(for: [netIn, netOut]) == nil)
         #expect(ChartPreferences.default.stack(for: [app, wired, free]).isEmpty)
     }
@@ -150,11 +151,16 @@ struct ChartPreferencesTests {
         #expect(preferences.stack(for: [netIn, netOut]).isEmpty)
     }
 
-    @Test("The two settings are independent")
+    @Test("The settings are independent")
     func settingsAreIndependent() {
         let stacking = ChartPreferences(mirrorsPairs: false, stacksParts: true)
         #expect(stacking.mirror(for: [netIn, netOut]) == nil)
         #expect(!stacking.stack(for: [app, wired]).isEmpty)
+        // Totals are a number in the legend, not a change to the picture, so
+        // they must not turn either of the other two on by arriving.
+        let totals = ChartPreferences(showsTotals: true)
+        #expect(totals.mirror(for: [netIn, netOut]) == nil)
+        #expect(totals.stack(for: [app, wired]).isEmpty)
     }
 
     @Test("Switched on, a pair mirrors and everything else does not")
@@ -166,7 +172,9 @@ struct ChartPreferencesTests {
 
     @Test("Round-trips through Codable")
     func codable() throws {
-        let preferences = ChartPreferences(mirrorsPairs: true, stacksParts: true)
+        let preferences = ChartPreferences(
+            mirrorsPairs: true, stacksParts: true, showsTotals: true
+        )
         let data = try JSONEncoder().encode(preferences)
         #expect(try JSONDecoder().decode(ChartPreferences.self, from: data) == preferences)
     }
@@ -175,6 +183,14 @@ struct ChartPreferencesTests {
     func decodesMissingKeys() throws {
         let data = Data("{}".utf8)
         #expect(try JSONDecoder().decode(ChartPreferences.self, from: data) == .default)
+        // The shape a 1.4 install actually has on disk: the two keys that
+        // existed then, and nothing about totals. It must keep its answers to
+        // the questions it was asked rather than reset all three.
+        let stored = Data(#"{"mirrorsPairs":true,"stacksParts":true}"#.utf8)
+        let decoded = try JSONDecoder().decode(ChartPreferences.self, from: stored)
+        #expect(decoded.mirrorsPairs)
+        #expect(decoded.stacksParts)
+        #expect(decoded.showsTotals == false)
     }
 }
 

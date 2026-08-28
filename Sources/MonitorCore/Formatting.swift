@@ -120,6 +120,22 @@ public enum Format {
             : String(format: "%.1f s", seconds)
     }
 
+    /// A span of history as a *label*, matching the History picker's wording:
+    /// "2 min", "10 min", "45 s".
+    ///
+    /// Not `duration`, which formats a measurement and would render two minutes
+    /// as "120.00 s". Whole minutes read as minutes because that is what the
+    /// picker beside them says; anything else keeps its seconds, since a card
+    /// that has only been running 45 s must say so rather than round itself up
+    /// to the window it was asked for.
+    public static func span(_ seconds: TimeInterval) -> String {
+        let minutes = seconds / 60
+        guard seconds >= 60, minutes == minutes.rounded() else {
+            return String(format: "%.0f s", seconds.rounded())
+        }
+        return String(format: "%.0f min", minutes)
+    }
+
     public static func duration(_ seconds: Double) -> String {
         if seconds >= 1 { return String(format: "%.2f s", seconds) }
         if seconds >= 0.001 { return String(format: "%.1f ms", seconds * 1000) }

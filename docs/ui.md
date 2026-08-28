@@ -310,6 +310,76 @@ a registry test proves it. `ChartCard` drops the stack when a mirror is set as
 well, because a band drawn below a baseline would be nonsense however it got
 there.
 
+## Totals for the window
+
+**Show totals for the window** in the Charts tab adds a second number to every
+legend entry: how much moved, beside how fast it is moving. Off by default, for
+a narrower version of the reason mirroring and stacking are — those change what
+the picture means, this only adds a number, but it adds one to a header already
+decided by `ViewThatFits`, so switching it on reflows cards onto two lines.
+
+The gap it fills: a dial answers "how hard is this working right now" and a
+chart answers "what has been happening". Neither answers "how much did that
+transfer cost me", which is the question you have while watching a sync run.
+
+### The arithmetic is already in the buffer
+
+A rate sample **is** the mean over the gap before it — `RateTracker` produces
+`Δcounter / Δt` — so multiplying each sample by the interval it measures and
+summing telescopes back to exactly the counter delta. `WindowTotal`, in
+`MonitorCore` beside `CSVExport`, is that sum. No counter history is kept
+anywhere, no source changes, and nothing is read that the ring buffer does not
+already hold, so this stays inside the rule that nothing is written to disk.
+
+`ChartCard` totals `series` rather than `visible`: the sum needs the sample just
+*before* the window's left edge to measure the partial interval that straddles
+it, and `visible` has already thrown that one away.
+
+### It covers what the chart draws
+
+The window is the History picker's, so the number and the picture answer the
+same question and one control changes both. Ten minutes remains the ceiling,
+because that is what the buffer holds.
+
+### It says the span it really has
+
+`WindowTotal.Result` carries `covered` beside `value`. Ten seconds after launch
+the buffer holds ten seconds, and "2 min" over a number covering a twelfth of
+that is the quiet kind of wrong — it looks exactly like the right answer, so
+nobody checks it. The span sits beside the card's title, and it reads the
+window only when the card really has it, within one `totalGap` of tolerance: a
+card is never going to cover its window to the microsecond, and "119 s" beside
+a picker reading "2 min" looks like a fault rather than like precision.
+
+Stated once beside the title rather than after each entry. The picker is
+global, so repeating "/ 2 min" down a legend is four copies of one fact, in the
+part of the card with the least room to spare. An entry covering materially
+less than the card's stated span — one source failed for a stretch while its
+neighbour kept reading — is dimmed. The ordinary case spends no ink saying it
+is ordinary.
+
+### A gap nobody sampled is not traffic
+
+`maximumGap` is the widest interval one sample may be credited with. A laptop
+coming back from sleep leaves a single enormous gap, and a rectangle drawn
+across it invents traffic that never crossed the wire; the clipped remainder
+comes off `covered` instead, so the span tells you the total is thin.
+
+`AppModel.totalGap` is four ticks of the master clock, so it follows the
+Sampling tab rather than assuming the 0.5 s default. A ceiling fixed for that
+default would clip every interval of a sampler slowed to 2 s.
+
+### Fewer than two samples has no total
+
+Nil, not zero — the same answer `RateTracker` gives on a first read, for the
+same reason. Zero draws as an idle machine rather than as a missing number.
+
+### Not in the CSV
+
+`Copy Data` still carries rates only. A spreadsheet's own `SUM` times the
+interval is this same arithmetic, and a "Total" row under the Time column is a
+type error waiting to be pasted into a chart.
+
 ## The time axis
 
 Three things have to be true of the labels along the bottom, and the first two

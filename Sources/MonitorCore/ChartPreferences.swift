@@ -88,9 +88,24 @@ public struct ChartPreferences: Codable, Equatable, Sendable {
     /// shape under somebody on upgrade is worse than one they switch on.
     public var stacksParts: Bool
 
-    public init(mirrorsPairs: Bool = false, stacksParts: Bool = false) {
+    /// Show how much moved over the window beside how fast it is moving.
+    ///
+    /// Off by default, for a narrower reason than the two above. Those change
+    /// what the picture *means*; this only adds a number. But it adds one to
+    /// every entry in a header that is already decided by `ViewThatFits`, so
+    /// switching it on reflows cards onto two lines — which is a card changing
+    /// shape under somebody on upgrade, the thing the other two defaults exist
+    /// to prevent.
+    public var showsTotals: Bool
+
+    public init(
+        mirrorsPairs: Bool = false,
+        stacksParts: Bool = false,
+        showsTotals: Bool = false
+    ) {
         self.mirrorsPairs = mirrorsPairs
         self.stacksParts = stacksParts
+        self.showsTotals = showsTotals
     }
 
     public static let `default` = ChartPreferences()
@@ -112,6 +127,7 @@ public struct ChartPreferences: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case mirrorsPairs
         case stacksParts
+        case showsTotals
     }
 
     /// `decodeIfPresent`, so a value written before a setting existed still
@@ -120,9 +136,11 @@ public struct ChartPreferences: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let mirrors = try container.decodeIfPresent(Bool.self, forKey: .mirrorsPairs)
         let stacks = try container.decodeIfPresent(Bool.self, forKey: .stacksParts)
+        let totals = try container.decodeIfPresent(Bool.self, forKey: .showsTotals)
         self.init(
             mirrorsPairs: mirrors ?? ChartPreferences.default.mirrorsPairs,
-            stacksParts: stacks ?? ChartPreferences.default.stacksParts
+            stacksParts: stacks ?? ChartPreferences.default.stacksParts,
+            showsTotals: totals ?? ChartPreferences.default.showsTotals
         )
     }
 }

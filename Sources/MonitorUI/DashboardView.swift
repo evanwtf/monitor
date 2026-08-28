@@ -390,7 +390,10 @@ public struct DashboardView: View {
             // membership: switch one direction off and the card stops being a
             // pair.
             mirror: model.charts.mirror(for: drawn.map(\.descriptor)),
-            stacked: model.charts.stack(for: drawn.map(\.descriptor))
+            stacked: model.charts.stack(for: drawn.map(\.descriptor)),
+            // Nil switches totals off. The gap comes from the model because
+            // that is where the sampling clock is.
+            totalGap: model.charts.showsTotals ? model.totalGap : nil
         )
     }
 

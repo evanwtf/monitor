@@ -100,6 +100,19 @@ public final class AppModel {
     /// How much live history to keep: ten minutes at two samples a second.
     public let historyCapacity = 1200
 
+    /// The widest interval one sample may be credited with in a window total,
+    /// in ticks of the master clock.
+    ///
+    /// Four: wide enough that a tick which ran late still contributes its whole
+    /// interval, and narrow enough that a laptop coming back from sleep cannot
+    /// credit one sample with an hour of traffic that never crossed the wire.
+    static let totalGapTicks = 4.0
+
+    /// That, in seconds, at whatever rate the clock is currently running.
+    /// `WindowTotal` deliberately does not know the clock; this is where it
+    /// lives.
+    public var totalGap: TimeInterval { interval * Self.totalGapTicks }
+
     public let descriptors: [MetricID: MetricDescriptor]
     private let sampler: Sampler
     private var pump: Task<Void, Never>?

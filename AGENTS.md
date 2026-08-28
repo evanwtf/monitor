@@ -181,6 +181,24 @@ are no component-level AGENTS.md files.
   is its own type and key beside `LayoutPreferences`: **which cards exist**
   versus **how one is drawn**. Off by default, because a chart that changes
   shape on upgrade is worse than one somebody switches on.
+- **A rate can be totalled, and the sum is already in the buffer.** **Show
+  totals for the window** in the Charts tab puts how much moved beside how fast
+  it is moving. A rate sample *is* the mean over the gap before it, so
+  `Σ(rate × preceding gap)` telescopes back to exactly the counter delta —
+  `WindowTotal` in `MonitorCore` is that sum, and it keeps no counter history,
+  changes no source and writes nothing. Three things it must keep doing: report
+  **`covered` beside `value`**, because "2 min" over ten seconds of history is
+  the quiet kind of wrong; **clip an interval wider than `maximumGap`**, or a
+  laptop back from sleep credits one sample with an hour of traffic that never
+  crossed the wire; and return **nil under two samples**, not zero, the same
+  answer `RateTracker` gives on a first read. `MetricUnit.accumulation` says
+  what a unit adds up to and is nil for every level — derived from the unit like
+  `direction` and `composition`, never a table of ids. **Network totals in
+  bytes** while its rate stays Mbit/s: a link is quoted in bits, a volume in
+  bytes, and the divide by eight has one definition. The card totals `series`,
+  not `visible` — the sum needs the sample just outside the window's left edge
+  to measure the interval straddling it. `AppModel.totalGap` is four ticks of
+  the master clock, so it follows the Sampling tab rather than assuming 0.5 s.
 - **The time axis is computed, not automatic.** `ChartAxis` in `MonitorCore`.
   Three rules, and the first two versions traded one for another: a tick is an
   **instant** (10:42:00 sits at 10:42:00 and scrolls left keeping its label —
@@ -219,8 +237,8 @@ are no component-level AGENTS.md files.
   double-click to zoom — and that they do not fight is checked by running
   `swift run monitor`, never by a test.
 - **The layout is chosen per metric, in preferences.** Cmd-, opens a tabbed
-  window. Its **Charts** tab holds how cards are *drawn* (mirroring), which is
-  a different question from which cards there are. Its **Layout** tab lists
+  window. Its **Charts** tab holds how cards are *drawn* — stacking, mirroring,
+  totals — which is a different question from which cards there are. Its **Layout** tab lists
   every metric with a Gauge checkbox and a
   Chart checkbox, grouped into collapsible sections whose headings carry the
   same two checkboxes for the whole group. The two columns are not symmetrical:
