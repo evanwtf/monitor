@@ -545,12 +545,22 @@ public struct DashboardView: View {
         } else {
             ToolbarItem(placement: .navigation) { buildStamp }
         }
-        // `.primaryAction` rather than the default `.automatic`. The controls
-        // used to be pushed to the trailing edge by the window's title taking
-        // the slack in the middle; with the title removed, `.automatic` packed
-        // them up against the stamp on the left. Anchoring them explicitly says
-        // what the layout actually depends on, instead of leaning on something
-        // that is no longer there.
+        // The controls used to be pushed to the trailing edge by the window's
+        // title taking the slack in the middle. Removing the title took that
+        // with it, and **placement alone does not bring it back**: a macOS
+        // toolbar packs its items left to right after the navigation slot, so
+        // `.primaryAction` names where an item belongs without reserving any
+        // room to push it there. It needs an actual space.
+        //
+        // `ToolbarSpacer` is that space and it is macOS 26. Below 26 a Spacer
+        // in the centre slot is the nearest equivalent — untested, since the
+        // only machine this is developed on runs 26, so it is deliberately the
+        // fallback rather than the path everything takes.
+        if #available(macOS 26.0, *) {
+            ToolbarSpacer(.flexible)
+        } else {
+            ToolbarItem(placement: .principal) { Spacer() }
+        }
         ToolbarItem(placement: .primaryAction) {
             Picker("History", selection: $window) {
                 Text("1 min").tag(TimeInterval(60))

@@ -339,10 +339,15 @@ are no component-level AGENTS.md files.
   (`toolbar(removing: .title)`, gated: the `.title` kind is macOS 15, so 14 gets
   an empty `navigationTitle`) so the name is not drawn twice. The `Window` scene
   keeps its real name for the Window menu and the Dock, and that name lives
-  beside the version in `MonitorVersion`. **The trailing controls need
-  `.primaryAction`, not `.automatic`** — they used to be pushed right by the
+  beside the version in `MonitorVersion`. **The trailing controls need a
+  `ToolbarSpacer`, not just a placement** — they used to be pushed right by the
   title taking the slack in the middle, and removing it packed them up against
-  the stamp. The styling is deliberately not the panel's palette or the cards' monospaced face.
+  the stamp. A macOS toolbar packs its items left to right after the navigation
+  slot, so `.primaryAction` names where an item belongs without reserving any
+  room to push it there; naming the placement and calling it fixed was the first
+  attempt and it changed nothing on screen. `ToolbarSpacer` is macOS 26, so
+  below that a Spacer in the `.principal` slot stands in — untested, since the
+  machine this is developed on runs 26. The styling is deliberately not the panel's palette or the cards' monospaced face.
   It is the one thing in the window that is not a reading: everything else is a
   measurement styled to be scanned, and this is a label on the photograph, there
   to survive being screenshotted and read back later. macOS 26 wraps toolbar

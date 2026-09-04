@@ -967,9 +967,18 @@ notices until a screenshot.
 Removing the title cost the toolbar something that was not obvious until it was
 gone: the title was taking the slack in the middle, and it was that, not the
 items' own placement, pushing the History picker and the size and rate controls
-to the trailing edge. Without it `.automatic` packed them up against the stamp.
-They are `.primaryAction` now, which says what the layout actually depends on
-rather than leaning on something that is no longer there.
+to the trailing edge. Without it they packed up against the stamp.
+
+**Placement alone does not bring it back.** Moving them to `.primaryAction` was
+the first attempt and it changed nothing on screen: a macOS toolbar packs its
+items left to right after the navigation slot, so a placement names where an
+item belongs without reserving any room to push it there. What was removed was
+a *space*, and only a space replaces it — `ToolbarSpacer(.flexible)` between the
+stamp and the controls.
+
+That is macOS 26, so below it a `Spacer` in the `.principal` slot stands in.
+Untested: the only machine this is developed on runs 26, which is why it is the
+fallback and not the path everything takes.
 
 It is in the title bar rather than in the About panel because of how the app gets
 used — a monitor is left running for days, and the
