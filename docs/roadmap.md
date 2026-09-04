@@ -21,6 +21,15 @@ open. Needs three things:
 Batched writes are mandatory, not optional. The endurance arithmetic is in
 `storage.md`.
 
+**The CSV logger is done.** `monitord` is a headless daemon that samples every
+metric on the same clock and writes rotating, human-readable CSV — one file per
+day (hourly for a sub-day retention window), hostname in the filename and as a
+column, timestamps in ISO8601 and epoch millis. It is the background sampler
+half of this step, aimed at a different consumer: other processes that want to
+correlate performance with temperature or throttling, rather than the app
+reading its own history back. The SQLite store and the app's time-range picker
+remain, for the app-side history.
+
 ## A real `.app` bundle
 
 Mostly done. `Scripts/make-app.sh` wraps the release binary in `monitor.app`
