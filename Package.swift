@@ -9,6 +9,8 @@ import PackageDescription
 //   MonitorUI       SwiftUI dashboard
 //   monitor         the app
 //   monitorctl      headless CLI — develop and verify sources without the GUI
+//   MonitorLog      the rotating CSV writer behind monitord
+//   monitord        headless daemon — logs every metric to rotating CSV
 //   MonitorStore    on-disk history — designed and tested, deliberately NOT
 //                   linked into v1; see below
 //

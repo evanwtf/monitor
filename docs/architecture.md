@@ -1,18 +1,21 @@
 # Architecture
 
-Four libraries and two executables.
+Five libraries and three executables.
 
 ```
-monitor (app)        monitorctl (CLI)
-      │                    │
-   MonitorUI               │
-      │                    │
-      ├──────► MonitorSources ◄──┤
-      │              │
-      └──────► MonitorCore ◄─────┘
+monitor (app)     monitorctl (CLI)     monitord (daemon)
+      │                  │                    │
+   MonitorUI             │                MonitorLog
+      │                  │                    │
+      ├────────► MonitorSources ◄─────────────┤
+      │                  │                    │
+      └────────► MonitorCore ◄────────────────┘
 
 MonitorStore ──► MonitorCore        (not reachable from the app; see storage.md)
 ```
+
+`monitorctl` and `monitord` both use `swift-argument-parser`, the package's only
+third-party dependency. Nothing else does.
 
 ## MonitorCore
 
@@ -46,6 +49,17 @@ window; `GaugeView` and `ChartCard` draw. `Theme` holds the palette.
 `AppModel` calls `Sampler.tick()` itself in a loop rather than registering a
 `SampleSink`. Sinks exist for headless consumers; the UI wants the batch back on
 the main actor immediately, and a direct call is the shortest path there.
+
+## MonitorLog
+
+`CSVLogSink`, the rotating CSV writer behind `monitord`. It conforms to
+`SampleSink`, so the daemon hands it the same batches the app draws.
+
+A new file opens when the run starts and again when the local day changes, so a
+long run rolls at midnight and a restart never appends to the previous run's
+file. Retention deletes whole files whose period is older than the window.
+
+**Never linked into the app**, for the same reason as `MonitorStore`.
 
 ## MonitorStore
 

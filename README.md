@@ -15,34 +15,45 @@ two things wrong: the charts are postage stamps, and the history begins the
 moment you open the app — so whatever weird blip you went looking for is exactly
 the thing it cannot show you.
 
+One Swift package builds three programs: a SwiftUI app, a CSV logging daemon,
+and a headless CLI for reading the same metrics from a terminal.
+
 ## Screenshot
-<img width="1470" height="923" alt="Screenshot 2026-08-12 at 10 55 01 AM" src="https://github.com/user-attachments/assets/cafed6c4-16ec-4af0-9d1b-45d0febf6542" />
+<img width="1470" height="923" alt="Screenshot 2026-08-12 at 10 55 01 AM" src="https://github.com/user-attachments/assets/cafed6c4-16ec-4af0-9d1b-45d0febf6542" />
 
+## What the repository provides
 
-## Status
+Three executables, five libraries and a build plugin, in one SwiftPM package.
 
-The app is realtime. History lives in a ten-minute ring buffer in memory and
-dies with the process. Gauges for rates, charts for levels.
+| Program | What it is | Shipped in the release zip |
+|---------|------------|----------------------------|
+| `monitor` | The SwiftUI app. Realtime panel of gauges and charts, ten minutes of in-memory history. | yes, as `monitor.app` |
+| `monitord` | Headless daemon. Samples every metric on one clock and writes rotating CSV. | yes, as a bare binary |
+| `monitorctl` | Headless CLI. Lists, reads and watches the same metrics in a terminal. | no — a development tool |
 
-`monitord` is the disk logger. It is a headless daemon that samples every
-metric on the same clock and writes rotating, human-readable CSV. Run it as a
-launchd `LaunchAgent` to log for days. It ships in the release zip beside
-`monitor.app`.
+| Library | What it holds |
+|---------|---------------|
+| `MonitorCore` | Metric model, ring buffer, downsampling, gauge auto-ranging, formatting, the sampling clock, CSV export, chart axis ticks. No macOS APIs, so it is testable anywhere. |
+| `MonitorSources` | The readers — CPU, memory, disk, network, GPU, SMC sensors — and the registry that lists them. |
+| `MonitorUI` | The dashboard: theme, gauges, chart cards, preferences, drag-to-reorder, `AppModel`. |
+| `MonitorLog` | `CSVLogSink`, the rotating CSV writer. Used by `monitord`; never linked into the app. |
+| `MonitorStore` | SQLite history and retention. Written and tested, deliberately **not** linked into any executable — see [docs/storage.md](docs/storage.md). |
 
-The SQLite store and an app-side history picker remain on the roadmap — see
-`docs/roadmap.md`.
+`Plugins/StampCommit` is a prebuild plugin that writes the current commit into a
+Swift constant, so the app's title bar cannot claim a stale build.
 
 ## Download
 
 Grab the latest `monitor-*.zip` from
 [Releases](https://github.com/evanwtf/monitor/releases/latest), unzip it, and
-drag `monitor.app` to Applications. The zip also contains `monitord`, a headless
-daemon that logs every metric to rotating CSV files.
+drag `monitor.app` to Applications. The zip also contains `monitord`, so a
+downloader runs `./monitord` with no toolchain installed.
 
-The app is signed ad-hoc rather than with a Developer ID, and it is not
-notarized, so macOS quarantines it on first launch and says it is damaged.
-Right-click the app and choose Open, then Open again in the dialog. Or clear
-the flag yourself:
+Releases are ad-hoc signed and not notarized unless the repository's
+`SIGN_IDENTITY` and `NOTARY_PROFILE` variables are set, in which case the
+release notes say so. When they are not, macOS quarantines the app on first
+launch and calls it damaged. Right-click the app and choose Open, then Open
+again in the dialog, or clear the flag yourself:
 
 ```sh
 xattr -d com.apple.quarantine /Applications/monitor.app
@@ -50,45 +61,67 @@ xattr -d com.apple.quarantine /Applications/monitor.app
 
 Building it yourself avoids all of that.
 
-## Running it
+## Usage
+
+### The app
 
 ```sh
 swift run monitor
 ```
 
-No Xcode project needed. That is the development loop. The app claims a
-foreground identity at launch, so it appears in Cmd-Tab and quits with Cmd-Q
-like anything else, even though it is a bare SwiftPM executable.
+No Xcode project needed. The app claims a foreground identity at launch, so it
+appears in Cmd-Tab and quits with Cmd-Q even as a bare SwiftPM executable.
+Cmd-, opens Preferences: **Layout** chooses a gauge and/or chart per metric,
+**Charts** controls how cards are drawn, **Sampling** sets the rates. Drag tiles
+to rearrange, double-click to zoom, right-click for Copy Image and Copy Data.
 
-To install it somewhere you can launch it from, build a real bundle:
+To install a real bundle:
 
 ```sh
 Scripts/make-app.sh ~/Applications
 ```
 
-That produces `monitor.app` — Info.plist, icon, bundle id and an ad-hoc
-signature. It is not signed with a Developer ID or notarized, so it is for this
-Mac.
-
-There is also a headless CLI, which is how the sampling code gets developed and
-verified without a GUI in the way:
+### `monitorctl` — read metrics in a terminal
 
 ```sh
-swift run monitorctl list                              # what can be measured
-swift run monitorctl read                              # one reading of everything
+swift run monitorctl list                                # every source and metric it declares
+swift run monitorctl read                                # one reading of everything
 swift run monitorctl watch --source disk --interval 0.5
-swift run monitorctl watch --json | jq                 # machine-readable
-swift run monitord --retention 7d --dir /tmp/logs      # rotating CSV logger
+swift run monitorctl watch --json --count 5 | jq         # machine-readable, bounded
 ```
 
-`monitord` is the logger: it samples every metric on the same clock and writes
-rotating, human-readable CSV — one file per run, hostname in the filename and
-as a column, timestamps in ISO8601 and epoch millis, temperatures in both °C
-and °F. Run it as a launchd `LaunchAgent` to log for days.
+| Option | Applies to | Meaning |
+|--------|-----------|---------|
+| `--source <id>` | all | Limit to one source; repeatable. `cpu`, `memory`, `disk`, `network`, `gpu`, `sensors`. |
+| `--interval <sec>` | `read`, `watch` | Sampling interval. Default `1.0`. |
+| `--json` | `read`, `watch` | One JSON object per sample instead of a table. |
+| `--count <n>` | `watch` | Stop after n samples. |
 
-With no options it logs at 1s with 1d retention to `~/Library/Logs/monitor`.
-The release zip ships a standalone `monitord` binary alongside `monitor.app`, so
-a downloader runs `./monitord` — no `swift run` needed.
+Disk, network and paging are counters, so a rate needs two readings: `read`
+takes two ticks itself, and `watch` prints nothing for them on its first line.
+That is correct, not a failure.
+
+### `monitord` — log every metric to CSV
+
+```sh
+swift run monitord --retention 7d --dir /tmp/logs
+./monitord                                               # from the release zip
+```
+
+| Option | Meaning |
+|--------|---------|
+| `--dir <path>` | Directory for the CSV files. Default `~/Library/Logs/monitor`. |
+| `--retention <window>` | `1h`, `6h`, `24h`, `48h`, `3d`, `5d`, `7d`, `14d`, `30d`, `forever`. Default `24h`. |
+| `--interval <sec>` | Sampling interval. Default `1.0`. |
+
+Files are named `sensors.<host>.<date>_<time>.csv` — one per run, rolling at
+local midnight — so several machines can share a directory and a restart never
+appends to the previous run's file. Timestamps are ISO8601 in UTC plus epoch
+millis, and temperatures appear in both °C and °F. Run it as a launchd
+`LaunchAgent` to log for days.
+
+Both CLIs support `--help` and `--version`, print usage for an unrecognised
+flag, and exit non-zero rather than starting.
 
 ## What it measures
 
@@ -106,8 +139,31 @@ efficiency core and a performance core have different ceilings, and the mean of
 the two is a number about nothing.
 
 Sensors are found, not assumed. A fanless Mac shows no Fans card rather than one
-reading zero, and everything the SMC reads is unprivileged. `docs/sensors.md` is
-the survey of what a Mac exposes.
+reading zero, and everything the SMC reads is unprivileged.
+[docs/sensors.md](docs/sensors.md) is the survey of what a Mac exposes.
+
+## Build and test
+
+Requires macOS 14 or later and a Swift 6 toolchain. The package resolves one
+dependency, Apple's `swift-argument-parser`, so the first build needs a network.
+
+```sh
+swift build && swift test                # build and the full suite
+swift test --filter GaugeScale           # one suite
+swift build -c release                   # CI gates this too
+swiftformat Sources Tests Plugins --lint --cache ignore
+```
+
+`swiftformat` must be on `PATH` for the lint gate; CI installs it with
+`brew install swiftformat` when it is missing. `MonitorSourcesTests` read the
+real machine, so they need a real Mac — they assert plausible ranges rather
+than values.
+
+CI runs build, test, release build, CLI smoke tests and the format check on
+every pull request. Every merge to main ships a release: `release.yml` bumps
+the version, tags it, and attaches the zip built by `package.yml`. A
+`release:minor`, `release:major` or `release:skip` label on the pull request
+changes that; a merge touching only docs and workflows publishes nothing.
 
 ## Design notes
 
@@ -116,45 +172,35 @@ A few decisions that are load-bearing rather than incidental:
 - **The app writes no history to disk.** A monitor runs all day, every day.
   Writing a sample a second forever costs real SSD endurance for data nobody
   reads, so the app keeps a ten-minute ring buffer in memory and nothing more.
-  This is enforced by the dependency graph — the app does not link the storage
-  library at all — not by anyone remembering. Preferences are the one thing
-  that persists, which is a write per checkbox rather than a write per sample.
-  `docs/storage.md` works through the arithmetic for when history does arrive.
-- **`monitord` is the disk logger, and it is a separate binary.** The app's
-  history is a live view in memory. `monitord` is the long-running counterpart:
-  it samples on the same clock and writes rotating CSV that other processes
-  read to correlate performance with temperature or throttling. It is never
-  linked into the app, so the app's no-disk guarantee holds. Run it as a
-  launchd `LaunchAgent` to log for days.
-- **A gauge is per metric; a chart is per group.** Cmd-, opens Preferences, and
-  its Layout tab lists every metric with a Gauge checkbox and a Chart checkbox.
-  Ticking the chart column for Network In and Network Out gives one Network card
-  with both lines on it, because in and out are only readable against each
-  other; ticking the gauge column gives two dials, because a dial shows one
-  number. Sections collapse, and a section heading's checkbox sets the whole
-  group at once — it shows a dash when the rows disagree, so a folded section
-  still tells you what state it is in. The panel opens with a considered layout — dials for disk and network
-  throughput, charts for everything worth glancing at — and this is where you
-  disagree with it.
+  The dependency graph enforces it — the app does not link `MonitorStore` at
+  all. Preferences are the exception, a write per checkbox rather than per
+  sample. [docs/storage.md](docs/storage.md) has the arithmetic.
+- **`monitord` is the disk logger, and it is a separate binary**, so the app's
+  no-disk guarantee holds. It aims at a different consumer: other processes
+  correlating performance with temperature or throttling.
+- **A gauge is per metric; a chart is per group.** Ticking the chart column for
+  Network In and Network Out gives one Network card with both lines, because in
+  and out are only readable against each other; ticking the gauge column gives
+  two dials, because a dial shows one number.
 - **A failed reading is shown as a gap, never as zero.** An idle machine and a
   broken sensor must not look identical. Sources throw; the UI greys the card
   out and says so.
 - **Fraction charts are pinned to 0–100%.** Auto-scaling a CPU chart to its own
   2% idle noise is the single most common way a system monitor lies to you.
-- **Gauges auto-range and snap to round numbers.** A benchmark can pin its dial
-  at a known maximum; a monitor cannot, because disk write rate is 2 MB/s during
-  a mail sync and 6 GB/s during a restore. Full scale snaps to 1, 2 or 5 times a
-  power of ten so the tick labels stay readable, rises immediately, and falls
-  only after a quiet trailing window — otherwise the needle appears to move when
-  the value did not.
-- **The title bar says which build this is.** The app's name with the commit
-  and the build time under it, so a monitor left running for days still tells
-  you whether you are looking at the change you just made.
+- **Gauges auto-range and snap to round numbers**, rising immediately and
+  falling only after a quiet trailing window, so the needle does not appear to
+  move when the value did not.
+- **The title bar says which build this is** — the commit and the build time —
+  so a monitor left running for days still tells you whether you are looking at
+  the change you just made.
 
 ## Documentation
 
-`docs/README.md` is the index. Start there.
+[docs/README.md](docs/README.md) is the index. Start there.
+
+Contributors and AI coding agents: [AGENTS.md](AGENTS.md) holds the working
+conventions, guardrails and the reasoning behind the boundaries.
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [LICENSE](LICENSE).
