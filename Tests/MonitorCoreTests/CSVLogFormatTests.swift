@@ -18,7 +18,7 @@ struct CSVLogFormatTests {
         let header = CSVLogFormat.header(hostname: "myhost", descriptors: descriptors)
         #expect(
             header
-                == "hostname,time_iso8601,time_epoch_ms,sensor.temperature.cpu (°C),sensor.fan.1.speed (rpm)"
+                == "hostname,time_iso8601,time_epoch_ms,sensor.temperature.cpu (°C),sensor.temperature.cpu (°F),sensor.fan.1.speed (rpm)"
         )
     }
 
@@ -31,8 +31,20 @@ struct CSVLogFormatTests {
         let fields = row.split(separator: ",", omittingEmptySubsequences: false)
         #expect(fields[0] == "myhost")
         #expect(fields[2] == "1750000000000")
-        #expect(fields[3] == "45.2500")
-        #expect(fields[4] == "") // fan missed this tick
+        #expect(fields[3] == "45.25") // °C
+        #expect(fields[4] == "113.45") // °F = 45.25 × 9/5 + 32
+        #expect(fields[5] == "") // fan missed this tick
+    }
+
+    @Test func rpmIsAWholeNumber() {
+        let timestamp = Date(timeIntervalSince1970: 1_750_000_000).timeIntervalSince1970
+        let values: [MetricID: Double] = [MetricID("sensor.fan.1.speed"): 1234.7]
+        let row = CSVLogFormat.row(
+            hostname: "myhost", timestamp: timestamp, values: values, descriptors: descriptors
+        )
+        let fields = row.split(separator: ",", omittingEmptySubsequences: false)
+        #expect(fields[3] == "") // temperature missed this tick
+        #expect(fields[5] == "1235") // rounded to a whole RPM
     }
 
     @Test func iso8601IsUTC() {

@@ -36,9 +36,13 @@ struct CSVLogSinkTests {
             includingPropertiesForKeys: nil
         )
         #expect(files.count == 1)
+        #expect(files[0].lastPathComponent.hasPrefix("sensors.myhost."))
+        #expect(files[0].lastPathComponent.hasSuffix(".log"))
         let text = try String(contentsOf: files[0], encoding: .utf8)
         #expect(text
-            .hasPrefix("hostname,time_iso8601,time_epoch_ms,sensor.temperature.cpu (°C)\n"))
+            .hasPrefix(
+                "hostname,time_iso8601,time_epoch_ms,sensor.temperature.cpu (°C),sensor.temperature.cpu (°F)\n"
+            ))
         #expect(text.contains("myhost,"))
     }
 
@@ -78,9 +82,9 @@ struct CSVLogSinkTests {
             timestamp: t,
             values: [MetricID("sensor.temperature.cpu"): 45.0]
         ))
-        // Two hours later: rolls to a new file, and the sweep deletes the first.
+        // A day later: rolls to a new file, and the sweep deletes the first.
         await sink.receive(SampleBatch(
-            timestamp: t + 7200,
+            timestamp: t + 86400,
             values: [MetricID("sensor.temperature.cpu"): 46.0]
         ))
         await sink.close()

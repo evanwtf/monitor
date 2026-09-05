@@ -1,12 +1,11 @@
 import Foundation
 
-/// How long a CSV log is kept, and how often the file rolls.
+/// How long a CSV log is kept.
 ///
-/// The cadence follows the window so a sub-day window can actually be honored:
-/// a daily file cannot hold a one-hour window — a "1h" retention would keep up
-/// to 24h of data — so sub-day windows roll hourly and day-and-up windows roll
-/// daily. The boundary is local time, 00:00:00 for daily and the top of the
-/// hour for hourly, so a file's name reads as the day or hour it covers.
+/// The log rolls once a day, at 00:00:00 local time, so a file's name reads as
+/// the day it covers. Retention deletes whole files older than the window; a
+/// sub-day window therefore keeps today's file, which can hold up to a day of
+/// data — the window is a floor, not a promise at sub-day granularity.
 public enum LogRetention: String, CaseIterable, Sendable {
     case oneHour = "1h"
     case sixHours = "6h"
@@ -35,46 +34,24 @@ public enum LogRetention: String, CaseIterable, Sendable {
         }
     }
 
-    /// How often the log file rolls over. Sub-day windows roll hourly, because
-    /// a daily file cannot honor a sub-day window; everything else rolls daily.
-    public var cadence: TimeInterval {
-        guard let seconds else { return 86400 }
-        return seconds < 86400 ? 3600 : 86400
-    }
-
-    /// The date part of a file name, which is also how a file's period is read
-    /// back for retention. Daily files carry a date, hourly files a date and
-    /// hour.
-    public var dateFormat: String { Self.dateFormat(for: cadence) }
-
-    static func dateFormat(for cadence: TimeInterval) -> String {
-        cadence >= 86400 ? "yyyy-MM-dd" : "yyyy-MM-dd-HH"
-    }
-
-    /// The start of the cadence period a timestamp falls in, in local time.
-    public static func period(for timestamp: TimeInterval,
-                              cadence: TimeInterval) -> TimeInterval
-    {
+    /// The start of the day a timestamp falls in, in local time.
+    public static func period(for timestamp: TimeInterval) -> TimeInterval {
         let date = Date(timeIntervalSince1970: timestamp)
         let calendar = Calendar.current
-        let components = cadence >= 86400
-            ? calendar.dateComponents([.year, .month, .day], from: date)
-            : calendar.dateComponents([.year, .month, .day, .hour], from: date)
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
         return calendar.date(from: components)?.timeIntervalSince1970 ?? timestamp
     }
 
-    /// The period a file covers, read back from its name. The date is the last
-    /// component of the name, so a hostname that itself contains dashes cannot
-    /// confuse the parse.
-    public static func period(from filename: String, cadence: TimeInterval) -> TimeInterval? {
-        let base = filename.hasSuffix(".csv") ? String(filename.dropLast(4)) : filename
+    /// The day a file covers, read back from its name. The date is the last
+    /// component of the name, so a hostname that itself contains dashes or dots
+    /// cannot confuse the parse.
+    public static func period(from filename: String) -> TimeInterval? {
+        let base = filename.hasSuffix(".log") ? String(filename.dropLast(4)) : filename
         let formatter = DateFormatter()
         formatter.timeZone = .current
-        formatter.dateFormat = dateFormat(for: cadence)
-        let dateLength = cadence >= 86400 ? 10 : 13
-        guard base.count >= dateLength else { return nil }
-        guard let date = formatter.date(from: String(base.suffix(dateLength)))
-        else { return nil }
+        formatter.dateFormat = "yyyy_MM_dd"
+        guard base.count >= 10 else { return nil }
+        guard let date = formatter.date(from: String(base.suffix(10))) else { return nil }
         return date.timeIntervalSince1970
     }
 }

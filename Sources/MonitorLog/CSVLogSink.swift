@@ -3,10 +3,10 @@ import MonitorCore
 
 /// Writes sampled batches to rotating CSV files.
 ///
-/// One file per cadence period — hourly for sub-day retention, daily otherwise
-/// — named `monitor-<host>-<date>.csv` so files from several machines sharing a
-/// directory do not clobber. The header is written when a file is first created;
-/// a file reopened after a restart appends without repeating it.
+/// One file per day, named `sensors.<host>.<date>.log` so files from several
+/// machines sharing a directory do not clobber. The header is written when a
+/// file is first created; a file reopened after a restart appends without
+/// repeating it.
 ///
 /// Retention deletes whole files whose period is older than the window. It runs
 /// on a slow timer, not on every write, so a log that runs for days does not pay
@@ -37,7 +37,7 @@ public actor CSVLogSink: SampleSink {
     }
 
     public func receive(_ batch: SampleBatch) async {
-        let period = LogRetention.period(for: batch.timestamp, cadence: retention.cadence)
+        let period = LogRetention.period(for: batch.timestamp)
         if current?.period != period {
             closeCurrent()
             open(period: period)
@@ -90,8 +90,8 @@ public actor CSVLogSink: SampleSink {
         let date = Date(timeIntervalSince1970: period)
         let formatter = DateFormatter()
         formatter.timeZone = .current
-        formatter.dateFormat = retention.dateFormat
-        return "monitor-\(sanitized(hostname))-\(formatter.string(from: date)).csv"
+        formatter.dateFormat = "yyyy_MM_dd"
+        return "sensors.\(sanitized(hostname)).\(formatter.string(from: date)).log"
     }
 
     private func sweep(now: TimeInterval) {
@@ -101,12 +101,11 @@ public actor CSVLogSink: SampleSink {
             at: directory, includingPropertiesForKeys: nil
         )) ?? []
         for file in files
-            where file.lastPathComponent.hasPrefix("monitor-\(sanitized(hostname))-")
+            where file.lastPathComponent.hasPrefix("sensors.\(sanitized(hostname)).")
         {
-            guard let period = LogRetention.period(
-                from: file.lastPathComponent, cadence: retention.cadence
-            ) else { continue }
-            if period + retention.cadence <= cutoff {
+            guard let period = LogRetention.period(from: file.lastPathComponent)
+            else { continue }
+            if period + 86400 <= cutoff {
                 try? FileManager.default.removeItem(at: file)
             }
         }

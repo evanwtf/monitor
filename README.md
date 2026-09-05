@@ -76,9 +76,9 @@ swift run monitord --retention 7d --dir /tmp/logs      # rotating CSV logger
 ```
 
 `monitord` is the logger: it samples every metric on the same clock and writes
-rotating, human-readable CSV — one file per day (hourly for a sub-day retention
-window), hostname in the filename and as a column, timestamps in ISO8601 and
-epoch millis. Run it as a launchd `LaunchAgent` to log for days.
+rotating, human-readable CSV — one file per day, hostname in the filename and as
+a column, timestamps in ISO8601 and epoch millis, temperatures in both °C and
+°F. Run it as a launchd `LaunchAgent` to log for days.
 
 ## What it measures
 

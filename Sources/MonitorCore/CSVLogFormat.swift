@@ -7,13 +7,22 @@ import Foundation
 /// is written once per file, from the descriptors, so a fanless Mac simply has
 /// no fan column.
 ///
-/// Two time columns — ISO8601 in UTC and epoch millis — because a human reads
-/// the first and a tool reads the second, and neither should have to parse the
-/// other. A metric that produced no sample this tick leaves an empty field,
-/// never a zero, so a gap does not read as a cold die.
+/// A temperature is written twice — in °C and in °F — because a log read by a
+/// human or a tool on either side of the Atlantic should not make the reader
+/// convert. Two time columns — ISO8601 in UTC and epoch millis — because a human
+/// reads the first and a tool reads the second. A metric that produced no
+/// sample this tick leaves an empty field, never a zero, so a gap does not read
+/// as a cold die.
 public enum CSVLogFormat {
+    /// One output column: a name and how to format a value for it.
+    struct Column {
+        let name: String
+        let format: (Double) -> String
+    }
+
     public static func header(hostname _: String, descriptors: [MetricDescriptor]) -> String {
-        CSVExport.row(["hostname", "time_iso8601", "time_epoch_ms"] + descriptors.map(column))
+        let names = descriptors.flatMap { columns(for: $0) }.map(\.name)
+        return CSVExport.row(["hostname", "time_iso8601", "time_epoch_ms"] + names)
     }
 
     public static func row(
@@ -24,14 +33,44 @@ public enum CSVLogFormat {
     ) -> String {
         let iso = iso8601(timestamp)
         let epochMs = Int64((timestamp * 1000).rounded())
-        let fields = descriptors.map { values[$0.id].map(CSVExport.number) ?? "" }
+        let fields = descriptors.flatMap { descriptor in
+            columns(for: descriptor).map { column in
+                values[descriptor.id].map(column.format) ?? ""
+            }
+        }
         return CSVExport.row([hostname, iso, String(epochMs)] + fields)
     }
 
-    /// "sensor.temperature.cpu (°C)". The metric id is the stable key; the unit
-    /// rides along so a consumer does not have to know it from elsewhere.
-    static func column(_ descriptor: MetricDescriptor) -> String {
-        "\(descriptor.id.rawValue) (\(Format.baseUnit(descriptor.unit)))"
+    /// A temperature becomes two columns, °C and °F; anything else is one.
+    static func columns(for descriptor: MetricDescriptor) -> [Column] {
+        if descriptor.unit == .celsius {
+            return [
+                Column(name: "\(descriptor.id.rawValue) (°C)") { number($0, decimals: 2) },
+                Column(name: "\(descriptor.id.rawValue) (°F)") { number(
+                    $0 * 9 / 5 + 32,
+                    decimals: 2
+                ) },
+            ]
+        }
+        return [
+            Column(name: "\(descriptor.id.rawValue) (\(Format.baseUnit(descriptor.unit)))") {
+                number($0, unit: descriptor.unit)
+            },
+        ]
+    }
+
+    /// Two decimals for anything fractional; whole numbers for the units that
+    /// are counts. A log is read for trends, not for the fourth decimal.
+    static func number(_ value: Double, unit: MetricUnit) -> String {
+        switch unit {
+        case .rpm, .bytes, .count, .hertz: number(value, decimals: 0)
+        default: number(value, decimals: 2)
+        }
+    }
+
+    static func number(_ value: Double, decimals: Int) -> String {
+        guard value.isFinite else { return "" }
+        return String(format: "%.\(decimals)f", value)
     }
 
     static func iso8601(_ timestamp: TimeInterval) -> String {

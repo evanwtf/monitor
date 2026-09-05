@@ -23,9 +23,9 @@ OPTIONS
   --interval <sec>     sampling interval (default 1.0)
 
 NOTES
-  Files are named monitor-<host>-<date>.csv, one per day (or per hour for a
-  sub-day retention window), so files from several machines sharing a directory
-  do not clobber. Timestamps are ISO8601 in UTC plus epoch millis.
+  Files are named sensors.<host>.<date>.log, one per day, so files from several
+  machines sharing a directory do not clobber. Timestamps are ISO8601 in UTC
+  plus epoch millis. Temperatures appear in both degrees C and degrees F.
 """
 
 let arguments = Array(CommandLine.arguments.dropFirst())
