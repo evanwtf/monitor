@@ -5,7 +5,7 @@
 /// unbundled one cannot claim different versions. Keep the literal on one
 /// line: the script's pattern expects it there.
 public enum MonitorVersion {
-    public static let string = "1.6.1"
+    public static let string = "1.6.2"
 
     /// What the app calls itself. Here beside the version because the title bar
     /// draws it, the `Window` scene names itself with it, and two spellings of
