@@ -95,6 +95,30 @@ struct CSVLogSinkTests {
         #expect(files[0].lastPathComponent.hasPrefix("sensors.macbook-pro_local."))
     }
 
+    @Test func filenameIncludesTimeOfDay() async throws {
+        let dir = try tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let sink = try CSVLogSink(
+            directory: dir, hostname: "myhost", retention: .sevenDays, descriptors: descriptors
+        )
+        let t = Date(timeIntervalSince1970: 1_750_000_000).timeIntervalSince1970
+        await sink.receive(SampleBatch(
+            timestamp: t,
+            values: [MetricID("sensor.temperature.cpu"): 45.0]
+        ))
+        await sink.close()
+
+        let files = try FileManager.default.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: nil
+        )
+        let formatter = DateFormatter()
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy_MM_dd_HH_mm_ss"
+        let expected = "sensors.myhost.\(formatter.string(from: Date(timeIntervalSince1970: t))).csv"
+        #expect(files[0].lastPathComponent == expected)
+    }
+
     @Test func rollsOverOnCadenceBoundary() async throws {
         let dir = try tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }

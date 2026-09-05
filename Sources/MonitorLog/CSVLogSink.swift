@@ -3,10 +3,10 @@ import MonitorCore
 
 /// Writes sampled batches to rotating CSV files.
 ///
-/// One file per day, named `sensors.<host>.<date>.csv` so files from several
-/// machines sharing a directory do not clobber. The header is written when a
-/// file is first created; a file reopened after a restart appends without
-/// repeating it.
+/// One file per run, named `sensors.<host>.<date>_<time>.csv` so files from
+/// several machines sharing a directory do not clobber, and a restart does not
+/// append to the previous run's file. The header is written when a file is
+/// first created.
 ///
 /// Retention deletes whole files whose period is older than the window. It runs
 /// on a slow timer, not on every write, so a log that runs for days does not pay
@@ -40,7 +40,7 @@ public actor CSVLogSink: SampleSink {
         let period = LogRetention.period(for: batch.timestamp)
         if current?.period != period {
             closeCurrent()
-            open(period: period)
+            open(period: period, at: batch.timestamp)
         }
         guard let handle = current?.handle else { return }
         let values = Dictionary(
@@ -66,8 +66,8 @@ public actor CSVLogSink: SampleSink {
 
     // MARK: - Files
 
-    private func open(period: TimeInterval) {
-        let url = directory.appendingPathComponent(filename(for: period))
+    private func open(period: TimeInterval, at timestamp: TimeInterval) {
+        let url = directory.appendingPathComponent(filename(at: timestamp))
         let isNew = !FileManager.default.fileExists(atPath: url.path)
         if isNew {
             FileManager.default.createFile(atPath: url.path, contents: nil)
@@ -86,11 +86,11 @@ public actor CSVLogSink: SampleSink {
         current = nil
     }
 
-    private func filename(for period: TimeInterval) -> String {
-        let date = Date(timeIntervalSince1970: period)
+    private func filename(at timestamp: TimeInterval) -> String {
+        let date = Date(timeIntervalSince1970: timestamp)
         let formatter = DateFormatter()
         formatter.timeZone = .current
-        formatter.dateFormat = "yyyy_MM_dd"
+        formatter.dateFormat = "yyyy_MM_dd_HH_mm_ss"
         return "sensors.\(Self.sanitized(hostname)).\(formatter.string(from: date)).csv"
     }
 
