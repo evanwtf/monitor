@@ -46,6 +46,28 @@ struct CSVLogSinkTests {
         #expect(text.contains("myhost,"))
     }
 
+    @Test func hostnameIsSanitizedInFilename() async throws {
+        let dir = try tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let sink = try CSVLogSink(
+            directory: dir, hostname: "MacBook-Pro.local", retention: .sevenDays,
+            descriptors: descriptors
+        )
+        let t = Date(timeIntervalSince1970: 1_750_000_000).timeIntervalSince1970
+        await sink.receive(SampleBatch(
+            timestamp: t,
+            values: [MetricID("sensor.temperature.cpu"): 45.0]
+        ))
+        await sink.close()
+
+        let files = try FileManager.default.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: nil
+        )
+        #expect(files.count == 1)
+        #expect(files[0].lastPathComponent.hasPrefix("sensors.macbook-pro_local."))
+    }
+
     @Test func rollsOverOnCadenceBoundary() async throws {
         let dir = try tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }

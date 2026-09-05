@@ -24,8 +24,9 @@ OPTIONS
 
 NOTES
   Files are named sensors.<host>.<date>.log, one per day, so files from several
-  machines sharing a directory do not clobber. Timestamps are ISO8601 in UTC
-  plus epoch millis. Temperatures appear in both degrees C and degrees F.
+  machines sharing a directory do not clobber. The hostname is lowercased and
+  any character outside [a-z0-9-_] becomes an underscore. Timestamps are ISO8601
+  in UTC plus epoch millis. Temperatures appear in both degrees C and degrees F.
 """
 
 let arguments = Array(CommandLine.arguments.dropFirst())

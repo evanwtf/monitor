@@ -111,9 +111,16 @@ public actor CSVLogSink: SampleSink {
         }
     }
 
+    /// A hostname becomes a safe filename fragment: lowercased, and any
+    /// character outside [a-z0-9-_] collapsed to a single underscore, so
+    /// "MacBook-Pro.local" reads as "macbook-pro_local".
     private func sanitized(_ hostname: String) -> String {
         hostname
-            .replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: " ", with: "-")
+            .lowercased()
+            .replacingOccurrences(
+                of: "[^a-z0-9\\-_]",
+                with: "_",
+                options: .regularExpression
+            )
     }
 }
