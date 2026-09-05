@@ -142,6 +142,15 @@ swift build -c release --product monitord
 monitord="$(swift build -c release --product monitord --show-bin-path)/monitord"
 [ -x "$monitord" ] || { echo "no binary at $monitord" >&2; exit 1; }
 
+# The daemon must be signed too, or the notary service rejects the whole zip:
+# it scans every binary in the archive, and an unsigned one is "Invalid".
+if [ -n "$identity" ]; then
+    codesign --force --options runtime --timestamp --sign "$identity" "$monitord"
+else
+    codesign --force --sign - --timestamp=none "$monitord" >/dev/null 2>&1 \
+        || echo "warning: could not sign $monitord; it will still run" >&2
+fi
+
 package=".build/package"
 rm -rf "$package"
 mkdir -p "$package"
