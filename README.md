@@ -21,17 +21,23 @@ the thing it cannot show you.
 
 ## Status
 
-**v1: realtime, in memory, nothing written to disk.**
+The app is realtime. History lives in a ten-minute ring buffer in memory and
+dies with the process. Gauges for rates, charts for levels.
 
-Rates get analog gauges. Levels get charts. History is a ten-minute ring buffer
-that dies with the process — persistence and a background sampler are the next
-step, not this one. See `docs/roadmap.md`.
+`monitord` is the disk logger. It is a headless daemon that samples every
+metric on the same clock and writes rotating, human-readable CSV. Run it as a
+launchd `LaunchAgent` to log for days. It ships in the release zip beside
+`monitor.app`.
+
+The SQLite store and an app-side history picker remain on the roadmap — see
+`docs/roadmap.md`.
 
 ## Download
 
 Grab the latest `monitor-*.zip` from
 [Releases](https://github.com/evanwtf/monitor/releases/latest), unzip it, and
-drag `monitor.app` to Applications.
+drag `monitor.app` to Applications. The zip also contains `monitord`, a headless
+daemon that logs every metric to rotating CSV files.
 
 The app is signed ad-hoc rather than with a Developer ID, and it is not
 notarized, so macOS quarantines it on first launch and says it is damaged.
@@ -93,22 +99,33 @@ a downloader runs `./monitord` — no `swift run` needed.
 | Disk | read/write throughput, IOPS, mean latency | IOKit `IOBlockStorageDriver` |
 | Network | in/out throughput and packet rates | `getifaddrs` |
 | GPU | utilization, VRAM in use | IOKit `IOAccelerator` |
+| Sensors | temperature, fans, power | the SMC |
 
 Per-core CPU is reported separately rather than averaged. On Apple silicon an
 efficiency core and a performance core have different ceilings, and the mean of
 the two is a number about nothing.
 
+Sensors are found, not assumed. A fanless Mac shows no Fans card rather than one
+reading zero, and everything the SMC reads is unprivileged. `docs/sensors.md` is
+the survey of what a Mac exposes.
+
 ## Design notes
 
 A few decisions that are load-bearing rather than incidental:
 
-- **No history is written to disk.** A monitor runs all day, every day. Writing
-  a sample a second forever costs real SSD endurance for data nobody reads, so
-  v1 simply does not. This is enforced by the dependency graph — the app does
-  not link the storage library at all — not by anyone remembering. Preferences
-  are the one thing that persists, which is a write per checkbox rather than a
-  write per sample. `docs/storage.md` works through the arithmetic for when
-  history does arrive.
+- **The app writes no history to disk.** A monitor runs all day, every day.
+  Writing a sample a second forever costs real SSD endurance for data nobody
+  reads, so the app keeps a ten-minute ring buffer in memory and nothing more.
+  This is enforced by the dependency graph — the app does not link the storage
+  library at all — not by anyone remembering. Preferences are the one thing
+  that persists, which is a write per checkbox rather than a write per sample.
+  `docs/storage.md` works through the arithmetic for when history does arrive.
+- **`monitord` is the disk logger, and it is a separate binary.** The app's
+  history is a live view in memory. `monitord` is the long-running counterpart:
+  it samples on the same clock and writes rotating CSV that other processes
+  read to correlate performance with temperature or throttling. It is never
+  linked into the app, so the app's no-disk guarantee holds. Run it as a
+  launchd `LaunchAgent` to log for days.
 - **A gauge is per metric; a chart is per group.** Cmd-, opens Preferences, and
   its Layout tab lists every metric with a Gauge checkbox and a Chart checkbox.
   Ticking the chart column for Network In and Network Out gives one Network card
@@ -130,6 +147,9 @@ A few decisions that are load-bearing rather than incidental:
   power of ten so the tick labels stay readable, rises immediately, and falls
   only after a quiet trailing window — otherwise the needle appears to move when
   the value did not.
+- **The title bar says which build this is.** The app's name with the commit
+  and the build time under it, so a monitor left running for days still tells
+  you whether you are looking at the change you just made.
 
 ## Documentation
 
