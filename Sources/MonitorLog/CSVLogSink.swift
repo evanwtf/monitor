@@ -51,7 +51,7 @@ public actor CSVLogSink: SampleSink {
             hostname: hostname, timestamp: batch.timestamp,
             values: values, descriptors: descriptors
         )
-        try? handle.write(contentsOf: Data(line.utf8))
+        try? handle.write(contentsOf: Data((line + "\n").utf8))
         if batch.timestamp - lastSweep >= sweepInterval {
             lastSweep = batch.timestamp
             sweep(now: batch.timestamp)

@@ -46,6 +46,33 @@ struct CSVLogSinkTests {
         #expect(text.contains("myhost,"))
     }
 
+    @Test func eachRowEndsWithANewline() async throws {
+        let dir = try tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let sink = try CSVLogSink(
+            directory: dir, hostname: "myhost", retention: .sevenDays, descriptors: descriptors
+        )
+        let t = Date(timeIntervalSince1970: 1_750_000_000).timeIntervalSince1970
+        await sink.receive(SampleBatch(
+            timestamp: t,
+            values: [MetricID("sensor.temperature.cpu"): 45.0]
+        ))
+        await sink.receive(SampleBatch(
+            timestamp: t + 1,
+            values: [MetricID("sensor.temperature.cpu"): 46.0]
+        ))
+        await sink.close()
+
+        let files = try FileManager.default.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: nil
+        )
+        let text = try String(contentsOf: files[0], encoding: .utf8)
+        // Header plus two data rows, each on its own line.
+        #expect(text.split(separator: "\n").count == 3)
+        #expect(text.hasSuffix("\n"))
+    }
+
     @Test func hostnameIsSanitizedInFilename() async throws {
         let dir = try tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
