@@ -23,10 +23,11 @@ OPTIONS
   --interval <sec>     sampling interval (default 1.0)
 
 NOTES
-  Files are named sensors.<host>.<date>.csv, one per day, so files from several
-  machines sharing a directory do not clobber. The hostname is lowercased and
-  any character outside [a-z0-9-_] becomes an underscore. Timestamps are ISO8601
-  in UTC plus epoch millis. Temperatures appear in both degrees C and degrees F.
+  Files are named sensors.<host>.<date>_<time>.csv, one per run, so files from
+  several machines sharing a directory do not clobber, and a restart does not
+  append to the previous run's file. The hostname is lowercased and any
+  character outside [a-z0-9-_] becomes an underscore. Timestamps are ISO8601 in
+  UTC plus epoch millis. Temperatures appear in both degrees C and degrees F.
 """
 
 let arguments = Array(CommandLine.arguments.dropFirst())

@@ -42,16 +42,17 @@ public enum LogRetention: String, CaseIterable, Sendable {
         return calendar.date(from: components)?.timeIntervalSince1970 ?? timestamp
     }
 
-    /// The day a file covers, read back from its name. The date is the last
-    /// component of the name, so a hostname that itself contains dashes or dots
-    /// cannot confuse the parse.
+    /// The day a file covers, read back from its name. The date and time are
+    /// the last components of the name, so a hostname that itself contains
+    /// dashes or dots cannot confuse the parse. The time is ignored: the period
+    /// is the start of the day, so retention still deletes whole days.
     public static func period(from filename: String) -> TimeInterval? {
         let base = filename.hasSuffix(".csv") ? String(filename.dropLast(4)) : filename
         let formatter = DateFormatter()
         formatter.timeZone = .current
-        formatter.dateFormat = "yyyy_MM_dd"
-        guard base.count >= 10 else { return nil }
-        guard let date = formatter.date(from: String(base.suffix(10))) else { return nil }
-        return date.timeIntervalSince1970
+        formatter.dateFormat = "yyyy_MM_dd_HH_mm_ss"
+        guard base.count >= 19 else { return nil }
+        guard let date = formatter.date(from: String(base.suffix(19))) else { return nil }
+        return period(for: date.timeIntervalSince1970)
     }
 }
