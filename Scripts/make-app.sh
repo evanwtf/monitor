@@ -137,6 +137,8 @@ echo "Built $app"
 # level: monitor.app/ and monitord. Build it and stage the pair into
 # .build/package/, which the CI packaging step zips.
 echo "Building monitord…"
+# --show-bin-path prints the path but does not build, so build first.
+swift build -c release --product monitord
 monitord="$(swift build -c release --product monitord --show-bin-path)/monitord"
 [ -x "$monitord" ] || { echo "no binary at $monitord" >&2; exit 1; }
 
