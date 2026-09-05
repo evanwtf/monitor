@@ -700,8 +700,8 @@ raised scale readable when nothing is happening. `GaugeScaleTests` and
 ## The seven-segment readout
 
 The digital inset in each dial face is drawn as segments, not typeset. macOS
-ships no seven-segment font and this project takes no third-party dependencies,
-but a font would be the wrong tool regardless: it cannot draw the *unlit*
+ships no seven-segment font, and a font would be the wrong tool regardless:
+it cannot draw the *unlit*
 segments, and those are what make the inset read as a panel with a display in it
 rather than a stencil typeface.
 

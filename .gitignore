@@ -1,7 +1,11 @@
 # Swift Package Manager
 .build/
 .swiftpm/
-Package.resolved
+# Package.resolved is deliberately NOT ignored. It was, correctly, while the
+# package resolved nothing; now that it pins swift-argument-parser, committing
+# it is what makes a build reproducible — a version range resolves to whatever
+# is newest on the day, and a release built from a different revision than the
+# one that was tested is not the release that was tested.
 
 # Xcode
 *.xcuserstate
