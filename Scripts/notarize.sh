@@ -3,7 +3,10 @@
 # Notarize a signed monitor.app and staple the ticket to it.
 #
 # Usage:
-#   Scripts/notarize.sh .build/monitor.app monitor-1.1.0.zip
+#   Scripts/notarize.sh .build/package monitor-1.1.0.zip
+#
+# The first argument is the package directory holding monitor.app/ and monitord
+# side by side. The zip is rebuilt from it, so the daemon survives notarization.
 #
 # Needs a notarytool credential profile in the keychain, named by
 # MONITOR_NOTARY_PROFILE. Create it once per machine:
@@ -24,13 +27,16 @@
 
 set -euo pipefail
 
-app="${1:-}"
+package="${1:-}"
 zip="${2:-}"
 profile="${MONITOR_NOTARY_PROFILE:-}"
 
-[ -d "$app" ] || { echo "usage: $0 <app> <zip>" >&2; exit 1; }
-[ -f "$zip" ] || { echo "usage: $0 <app> <zip>" >&2; exit 1; }
+[ -d "$package" ] || { echo "usage: $0 <package> <zip>" >&2; exit 1; }
+[ -f "$zip" ] || { echo "usage: $0 <package> <zip>" >&2; exit 1; }
 [ -n "$profile" ] || { echo "MONITOR_NOTARY_PROFILE is not set" >&2; exit 1; }
+
+app="$package/monitor.app"
+[ -d "$app" ] || { echo "no monitor.app in $package" >&2; exit 1; }
 
 # A bundle signed ad-hoc is refused by the notary service with a message that
 # does not say so. Catching it here costs one command and a minute of waiting.
@@ -59,7 +65,7 @@ xcrun stapler validate "$app"
 
 echo "Rebuilding ${zip} around the stapled bundle…"
 rm -f "$zip"
-ditto -c -k --keepParent "$app" "$zip"
+ditto -c -k "$package" "$zip"
 
 # Gatekeeper's own verdict, which is the question a downloader is really asking.
 # It reads the staple rather than calling Apple, so this passes with the network

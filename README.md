@@ -72,7 +72,17 @@ swift run monitorctl list                              # what can be measured
 swift run monitorctl read                              # one reading of everything
 swift run monitorctl watch --source disk --interval 0.5
 swift run monitorctl watch --json | jq                 # machine-readable
+swift run monitord --retention 7d --dir /tmp/logs      # rotating CSV logger
 ```
+
+`monitord` is the logger: it samples every metric on the same clock and writes
+rotating, human-readable CSV — one file per day, hostname in the filename and as
+a column, timestamps in ISO8601 and epoch millis, temperatures in both °C and
+°F. Run it as a launchd `LaunchAgent` to log for days.
+
+With no options it logs at 1s with 1d retention to `~/Library/Logs/monitor`.
+The release zip ships a standalone `monitord` binary alongside `monitor.app`, so
+a downloader runs `./monitord` — no `swift run` needed.
 
 ## What it measures
 

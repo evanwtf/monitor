@@ -35,8 +35,10 @@ let package = Package(
         .library(name: "MonitorSources", targets: ["MonitorSources"]),
         .library(name: "MonitorStore", targets: ["MonitorStore"]),
         .library(name: "MonitorUI", targets: ["MonitorUI"]),
+        .library(name: "MonitorLog", targets: ["MonitorLog"]),
         .executable(name: "monitor", targets: ["monitor"]),
         .executable(name: "monitorctl", targets: ["monitorctl"]),
+        .executable(name: "monitord", targets: ["monitord"]),
     ],
     targets: [
         .target(name: "MonitorCore", plugins: ["StampCommit"]),
@@ -47,16 +49,21 @@ let package = Package(
         .plugin(name: "StampCommit", capability: .buildTool()),
         .target(name: "MonitorSources", dependencies: ["MonitorCore"]),
         .target(name: "MonitorStore", dependencies: ["MonitorCore"]),
+        // The rotating CSV logger. `monitord` writes it; the app never links it,
+        // so the app still has no code path that reaches the filesystem.
+        .target(name: "MonitorLog", dependencies: ["MonitorCore"]),
         // Note the absence of MonitorStore in the next three targets. That is
         // the point, not an oversight.
         .target(name: "MonitorUI", dependencies: ["MonitorCore", "MonitorSources"]),
         .executableTarget(name: "monitor", dependencies: ["MonitorUI"]),
         .executableTarget(name: "monitorctl", dependencies: ["MonitorCore", "MonitorSources"]),
+        .executableTarget(name: "monitord", dependencies: ["MonitorLog", "MonitorSources"]),
         .testTarget(name: "MonitorCoreTests", dependencies: ["MonitorCore"]),
         .testTarget(
             name: "MonitorSourcesTests",
             dependencies: ["MonitorSources", "MonitorCore"]),
         .testTarget(name: "MonitorStoreTests", dependencies: ["MonitorStore", "MonitorCore"]),
+        .testTarget(name: "MonitorLogTests", dependencies: ["MonitorLog", "MonitorCore"]),
         // AppModel decides what the panel draws and which sources are read on
         // a given tick. Both are arithmetic, and both are wrong in ways that
         // look like a rendering glitch, so they are worth testing directly.

@@ -48,6 +48,7 @@ swift run monitorctl list        # every source and the metrics it declares
 swift run monitorctl read        # read every metric once
 swift run monitorctl watch --source disk --interval 0.5
 swift run monitorctl watch --json --count 5        # machine-readable, bounded
+swift run monitord --retention 7d --dir /tmp/logs  # rotating CSV logger
 swiftformat Sources Tests Plugins --lint --cache ignore   # CI lint gate
 Scripts/make-app.sh [dest]       # wrap the release binary in monitor.app
 Scripts/make-icon.swift out.icns # draw the app icon (make-app.sh calls this)
@@ -77,8 +78,11 @@ Sources/
                    LayoutPreferencesStore (layout, sampling, arrangement)
   MonitorStore/    SQLite history and retention. Designed and tested but NOT
                    linked into the app — see "Guardrails" below.
+  MonitorLog/      the rotating CSV logger: CSVLogSink. Written by monitord;
+                   never linked into the app.
   monitor/         the app target (@main SwiftUI App) and its AppDelegate
   monitorctl/      headless CLI harness
+  monitord/        headless daemon that logs every metric to rotating CSV
 Plugins/
   StampCommit/     prebuild plugin: writes the commit into a Swift constant
                    before every build, so the title bar cannot go stale
@@ -86,7 +90,7 @@ Scripts/           make-app.sh, which builds monitor.app, make-icon.swift,
                    which draws its icon, and notarize.sh, which notarizes and
                    staples a Developer ID build
 Tests/             MonitorCoreTests, MonitorSourcesTests, MonitorStoreTests,
-                   MonitorUITests
+                   MonitorLogTests, MonitorUITests
 docs/              README.md is the index
 .github/workflows/
   ci.yml           build, test, release build, CLI smoke test, lint

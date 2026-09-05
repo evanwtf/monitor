@@ -133,6 +133,20 @@ fi
 
 echo "Built $app"
 
+# The daemon ships alongside the app, so a release zip has both at the top
+# level: monitor.app/ and monitord. Build it and stage the pair into
+# .build/package/, which the CI packaging step zips.
+echo "Building monitord…"
+monitord="$(swift build -c release --product monitord --show-bin-path)/monitord"
+[ -x "$monitord" ] || { echo "no binary at $monitord" >&2; exit 1; }
+
+package=".build/package"
+rm -rf "$package"
+mkdir -p "$package"
+cp -R "$app" "$package/monitor.app"
+cp "$monitord" "$package/monitord"
+echo "Staged $package (monitor.app, monitord)"
+
 if [ -n "$destination" ]; then
     mkdir -p "$destination"
     rm -rf "${destination%/}/monitor.app"

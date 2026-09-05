@@ -68,7 +68,9 @@ jobs:
           version="$(sed -n 's/.*static let string = "\(.*\)".*/\1/p' \
               Sources/MonitorCore/Version.swift)"
           name="monitor-${version}.zip"
-          ditto -c -k --keepParent .build/monitor.app "$name"
+          # The package dir holds monitor.app/ and monitord side by side; ditto
+          # without --keepParent puts both at the top level of the zip.
+          ditto -c -k .build/package "$name"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
       # Between zipping and the checksum, because notarize.sh rebuilds the zip
@@ -78,7 +80,7 @@ jobs:
         if: vars.NOTARY_PROFILE != ''
         env:
           MONITOR_NOTARY_PROFILE: ${{ vars.NOTARY_PROFILE }}
-        run: Scripts/notarize.sh .build/monitor.app "${{ steps.package.outputs.name }}"
+        run: Scripts/notarize.sh .build/package "${{ steps.package.outputs.name }}"
 
       - name: Checksum
         id: checksum

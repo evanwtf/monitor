@@ -200,6 +200,10 @@ jobs:
           cat > notes.md <<'NOTES'
           Download the zip below, unzip it, and drag `monitor.app` to
           Applications. macOS 14 or later, Apple silicon or Intel.
+
+          The zip also contains `monitord`, a headless daemon that logs every
+          metric to rotating CSV files. Run `./monitord` to log at 1s with 1d
+          retention, or pass `--retention` and `--interval` to change it.
           NOTES
 
           if [ "$NOTARIZED" != "true" ]; then
