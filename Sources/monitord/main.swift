@@ -19,7 +19,7 @@ USAGE
 OPTIONS
   --dir <path>         directory for the CSV files (default: ~/Library/Logs/monitor)
   --retention <window> how long to keep files: 1h, 6h, 24h, 48h, 3d, 5d, 7d, 14d, 30d, forever
-                       (default: 7d)
+                       (default: 24h)
   --interval <sec>     sampling interval (default 1.0)
 
 NOTES
@@ -40,7 +40,7 @@ func value(for flag: String) -> String? {
 let directory = value(for: "--dir").map { URL(fileURLWithPath: $0) }
     ?? FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent("Library/Logs/monitor", isDirectory: true)
-let retention = value(for: "--retention").flatMap(LogRetention.init(rawValue:)) ?? .sevenDays
+let retention = value(for: "--retention").flatMap(LogRetention.init(rawValue:)) ?? .oneDay
 let interval = value(for: "--interval").flatMap(Double.init) ?? 1.0
 
 let sources = SourceRegistry.makeAll()

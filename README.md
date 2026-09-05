@@ -80,6 +80,10 @@ rotating, human-readable CSV — one file per day, hostname in the filename and 
 a column, timestamps in ISO8601 and epoch millis, temperatures in both °C and
 °F. Run it as a launchd `LaunchAgent` to log for days.
 
+With no options it logs at 1s with 1d retention to `~/Library/Logs/monitor`.
+The release zip ships a standalone `monitord` binary alongside `monitor.app`, so
+a downloader runs `./monitord` — no `swift run` needed.
+
 ## What it measures
 
 | Group | Metrics | Source |
