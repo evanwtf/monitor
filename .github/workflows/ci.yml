@@ -45,6 +45,35 @@ jobs:
           swift run -c release monitorctl list
           swift run -c release monitorctl read
 
+      # The front doors, against the real binaries. CommandLineTests covers the
+      # parsing, but the bug in #48 was that `--help` reached the start path —
+      # a daemon booting instead of printing is only visible from outside the
+      # process. Every invocation here must return promptly and write nothing.
+      - name: Smoke test CLI help and version
+        run: |
+          set -euo pipefail
+          for binary in monitorctl monitord; do
+            swift run -c release "$binary" --help
+            swift run -c release "$binary" --version
+          done
+          # An unrecognised flag must be refused, not ignored. `!` because a
+          # non-zero exit is the pass condition.
+          ! swift run -c release monitord --nonsense
+          ! swift run -c release monitorctl list --nonsense
+
+      # monitord --help must not leave a CSV behind: writing one is exactly the
+      # symptom #48 reported.
+      - name: monitord --help writes nothing
+        run: |
+          set -euo pipefail
+          dir="$(mktemp -d)"
+          swift run -c release monitord --dir "$dir" --help
+          if [ -n "$(ls -A "$dir")" ]; then
+            echo "monitord --help wrote to $dir:"
+            ls -la "$dir"
+            exit 1
+          fi
+
   lint:
     name: Format check
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository

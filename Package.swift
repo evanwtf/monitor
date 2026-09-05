@@ -40,6 +40,13 @@ let package = Package(
         .executable(name: "monitorctl", targets: ["monitorctl"]),
         .executable(name: "monitord", targets: ["monitord"]),
     ],
+    dependencies: [
+        // The only third-party dependency, and it is Apple's. Both CLIs used to
+        // hand-roll their parsing, which is how `monitord --help` came to start
+        // the daemon instead of printing usage (#48). Help generated from the
+        // flag declarations cannot drift from the flags.
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
+    ],
     targets: [
         .target(name: "MonitorCore", plugins: ["StampCommit"]),
         // A prebuild plugin, so the commit in the title bar cannot go stale the
@@ -56,14 +63,33 @@ let package = Package(
         // the point, not an oversight.
         .target(name: "MonitorUI", dependencies: ["MonitorCore", "MonitorSources"]),
         .executableTarget(name: "monitor", dependencies: ["MonitorUI"]),
-        .executableTarget(name: "monitorctl", dependencies: ["MonitorCore", "MonitorSources"]),
-        .executableTarget(name: "monitord", dependencies: ["MonitorLog", "MonitorSources"]),
+        .executableTarget(
+            name: "monitorctl",
+            dependencies: [
+                "MonitorCore", "MonitorSources",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ]),
+        .executableTarget(
+            name: "monitord",
+            dependencies: [
+                "MonitorLog", "MonitorSources",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ]),
         .testTarget(name: "MonitorCoreTests", dependencies: ["MonitorCore"]),
         .testTarget(
             name: "MonitorSourcesTests",
             dependencies: ["MonitorSources", "MonitorCore"]),
         .testTarget(name: "MonitorStoreTests", dependencies: ["MonitorStore", "MonitorCore"]),
         .testTarget(name: "MonitorLogTests", dependencies: ["MonitorLog", "MonitorCore"]),
+        // The two CLIs' argument parsing. The bug that motivated it (#48) was
+        // invisible to every other suite: both binaries built, ran and sampled
+        // correctly, and only their front doors were wrong.
+        .testTarget(
+            name: "CommandLineTests",
+            dependencies: [
+                "monitorctl", "monitord", "MonitorCore",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ]),
         // AppModel decides what the panel draws and which sources are read on
         // a given tick. Both are arithmetic, and both are wrong in ways that
         // look like a rendering glitch, so they are worth testing directly.

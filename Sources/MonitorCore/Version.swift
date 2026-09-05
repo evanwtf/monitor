@@ -12,3 +12,14 @@ public enum MonitorVersion {
     /// one name is the sort of thing nobody notices until a screenshot.
     public static let name = "Monitor"
 }
+
+public extension MonitorVersion {
+    /// What `--version` prints: the release version and the commit it was built
+    /// from, on one line.
+    ///
+    /// Both, because they answer different questions. The version says which
+    /// release this is; the commit says whether it is the change just made, and
+    /// carries `-dirty` when it is not any commit at all. A CSV is more useful
+    /// when its reader can say exactly which build wrote it.
+    static var detailed: String { "\(string) (\(BuildStamp.commit))" }
+}

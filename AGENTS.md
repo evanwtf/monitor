@@ -15,8 +15,10 @@ oversight. Persistence and a background sampler come later — see
 
 ## Tech Stack
 
-- Swift 6 (`swift-tools-version: 6.0`), SwiftPM, macOS 14+. No third-party
-  dependencies.
+- Swift 6 (`swift-tools-version: 6.0`), SwiftPM, macOS 14+. One third-party
+  dependency, and it is Apple's: `swift-argument-parser`, used by `monitorctl`
+  and `monitord` for their flags. Nothing in the app, the UI or the sources
+  depends on it.
 - SwiftUI, Swift Charts, `Canvas` for the gauges.
 - System APIs: mach (`host_processor_info`, `host_statistics64`), IOKit
   (`IOBlockStorageDriver`, `IOAccelerator`), `getifaddrs`, `sysctl`,
@@ -30,8 +32,10 @@ oversight. Persistence and a background sampler come later — see
 
 ## Environment & Dependencies
 
-- A Mac running macOS 14 or later with a Swift 6 toolchain. Nothing else — the
-  package resolves no dependencies, so there is no install step.
+- A Mac running macOS 14 or later with a Swift 6 toolchain, and a network on
+  the first build so SwiftPM can fetch `swift-argument-parser`. There is no
+  other install step. `Package.resolved` is committed, so that fetch is pinned
+  to one revision rather than to whatever the range resolves to today.
 - `swiftformat` must be on `PATH` for the lint gate. CI installs it with
   `brew install swiftformat` when it is missing.
 - `MonitorSourcesTests` read the real machine, so they need a real Mac. They
@@ -434,6 +438,20 @@ are no component-level AGENTS.md files.
   two choices determine the axis, the formatting and whether it needs rate
   differentiation, and getting them wrong produces a chart that is quietly
   wrong rather than obviously broken.
+- **The CLIs declare their flags; they do not parse them.** `monitorctl` and
+  `monitord` are `ParsableCommand`s, so `--help` is rendered from the `@Option`
+  and `@Flag` declarations and an unrecognised flag is refused by the same
+  table. Add a flag by adding a property — there is no usage string to update,
+  which is the point. Both binaries used to hand-roll a `firstIndex(of:)` scan
+  beside a usage literal that nothing reached: `monitord --help` started the
+  daemon, and `--intrval 0.1` was silently ignored, so the CSV recorded one
+  sampling rate while its operator believed another. Two rules worth keeping:
+  a flag's **choices come from the type** (`LogRetention.allValueStrings`, the
+  source registry's `allIDs`), never from a list written out in prose; and a
+  value that parses but cannot work — a zero interval, a count below one — is
+  rejected in `validate()`, because type conversion does not catch it.
+  `CommandLineTests` covers both binaries' front doors, which no other suite
+  touches: the daemon itself was never broken.
 
 ## Guardrails
 
