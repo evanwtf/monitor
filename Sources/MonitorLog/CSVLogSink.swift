@@ -3,7 +3,7 @@ import MonitorCore
 
 /// Writes sampled batches to rotating CSV files.
 ///
-/// One file per day, named `sensors.<host>.<date>.log` so files from several
+/// One file per day, named `sensors.<host>.<date>.csv` so files from several
 /// machines sharing a directory do not clobber. The header is written when a
 /// file is first created; a file reopened after a restart appends without
 /// repeating it.
@@ -91,7 +91,7 @@ public actor CSVLogSink: SampleSink {
         let formatter = DateFormatter()
         formatter.timeZone = .current
         formatter.dateFormat = "yyyy_MM_dd"
-        return "sensors.\(Self.sanitized(hostname)).\(formatter.string(from: date)).log"
+        return "sensors.\(Self.sanitized(hostname)).\(formatter.string(from: date)).csv"
     }
 
     private func sweep(now: TimeInterval) {

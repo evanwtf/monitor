@@ -34,7 +34,7 @@ struct LogRetentionTests {
             month: 9,
             day: 4
         )))
-        let parsed = LogRetention.period(from: "sensors.my-host.2026_09_04.log")
+        let parsed = LogRetention.period(from: "sensors.my-host.2026_09_04.csv")
         #expect(parsed == day.timeIntervalSince1970)
     }
 }

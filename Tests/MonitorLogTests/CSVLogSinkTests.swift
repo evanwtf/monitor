@@ -37,7 +37,7 @@ struct CSVLogSinkTests {
         )
         #expect(files.count == 1)
         #expect(files[0].lastPathComponent.hasPrefix("sensors.myhost."))
-        #expect(files[0].lastPathComponent.hasSuffix(".log"))
+        #expect(files[0].lastPathComponent.hasSuffix(".csv"))
         let text = try String(contentsOf: files[0], encoding: .utf8)
         #expect(text
             .hasPrefix(

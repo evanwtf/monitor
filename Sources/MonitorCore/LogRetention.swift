@@ -46,7 +46,7 @@ public enum LogRetention: String, CaseIterable, Sendable {
     /// component of the name, so a hostname that itself contains dashes or dots
     /// cannot confuse the parse.
     public static func period(from filename: String) -> TimeInterval? {
-        let base = filename.hasSuffix(".log") ? String(filename.dropLast(4)) : filename
+        let base = filename.hasSuffix(".csv") ? String(filename.dropLast(4)) : filename
         let formatter = DateFormatter()
         formatter.timeZone = .current
         formatter.dateFormat = "yyyy_MM_dd"
