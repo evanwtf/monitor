@@ -27,8 +27,9 @@ oversight. Persistence and a background sampler come later — see
 - swiftformat (`.swiftformat`) for lint. CI runs on a self-hosted macOS ARM64
   runner.
 - Logging is `os.Logger` via the package-wide `log` in `MonitorCore/Log.swift`
-  (subsystem `wtf.evan.monitor`). Only `monitorctl` prints, because printing is
-  its output.
+  (subsystem `wtf.evan.monitor`). The app never prints. The two CLIs do, because
+  output is their point: `monitorctl` prints readings, and `monitord` prints its
+  startup line, its usage and its version.
 
 ## Environment & Dependencies
 
@@ -38,6 +39,8 @@ oversight. Persistence and a background sampler come later — see
   to one revision rather than to whatever the range resolves to today.
 - `swiftformat` must be on `PATH` for the lint gate. CI installs it with
   `brew install swiftformat` when it is missing.
+- `Package.resolved` is committed and is **not** ignored. Update it only by
+  changing a dependency deliberately, never to silence a resolve.
 - `MonitorSourcesTests` read the real machine, so they need a real Mac. They
   assert plausible ranges, not values, and pass whatever the machine is doing.
 
@@ -53,6 +56,8 @@ swift run monitorctl read        # read every metric once
 swift run monitorctl watch --source disk --interval 0.5
 swift run monitorctl watch --json --count 5        # machine-readable, bounded
 swift run monitord --retention 7d --dir /tmp/logs  # rotating CSV logger
+swift run monitorctl --help      # generated from the declarations, never hand-written
+swift run monitord --version     # version and the commit it was built from
 swiftformat Sources Tests Plugins --lint --cache ignore   # CI lint gate
 Scripts/make-app.sh [dest]       # wrap the release binary in monitor.app
 Scripts/make-icon.swift out.icns # draw the app icon (make-app.sh calls this)
@@ -85,8 +90,10 @@ Sources/
   MonitorLog/      the rotating CSV logger: CSVLogSink. Written by monitord;
                    never linked into the app.
   monitor/         the app target (@main SwiftUI App) and its AppDelegate
-  monitorctl/      headless CLI harness
-  monitord/        headless daemon that logs every metric to rotating CSV
+  monitorctl/      headless CLI harness: Monitorctl.swift, an ArgumentParser
+                   root with list/read/watch subcommands
+  monitord/        headless daemon that logs every metric to rotating CSV:
+                   Monitord.swift, an ArgumentParser command
 Plugins/
   StampCommit/     prebuild plugin: writes the commit into a Swift constant
                    before every build, so the title bar cannot go stale
@@ -94,10 +101,12 @@ Scripts/           make-app.sh, which builds monitor.app, make-icon.swift,
                    which draws its icon, and notarize.sh, which notarizes and
                    staples a Developer ID build
 Tests/             MonitorCoreTests, MonitorSourcesTests, MonitorStoreTests,
-                   MonitorLogTests, MonitorUITests
+                   MonitorLogTests, MonitorUITests, CommandLineTests (the two
+                   CLIs' argument parsing — see "Making Changes")
 docs/              README.md is the index
 .github/workflows/
-  ci.yml           build, test, release build, CLI smoke test, lint
+  ci.yml           build, test, release build, CLI smoke tests (including
+                   --help/--version and that monitord --help writes no CSV), lint
   release.yml      bumps the version on a merge to main, tags it, releases it
   package.yml      reusable: builds monitor.app, zips it, attaches it to a tag
 ```
@@ -509,6 +518,22 @@ are no component-level AGENTS.md files.
   both locks stay on: `[skip ci]` in the bump commit, and the `if:` guard on
   the `tag` job that ignores a commit carrying it. The tag targets the bump
   commit rather than `GITHUB_SHA`, or the zip reports the version before it.
+- `Package.resolved` — a lockfile, committed on purpose. It pins the one
+  dependency to a revision, so a release is built from the code that was
+  tested rather than from whatever the version range resolved to that day.
+- `Sources/MonitorCore/CommitStamp.generated.swift` — written by the
+  `StampCommit` plugin before every build. Never edit it, and never check a
+  version of it in.
+
+### Deprecated
+
+- **Hand-rolled argument parsing in the CLI targets.** `firstIndex(of:)` scans
+  over `CommandLine.arguments`, and usage text held in a `let usage = """…"""`
+  literal. Both are gone: they could not reject an unknown flag and the literal
+  had no route to a terminal, so `monitord --help` started the daemon. Declare
+  flags on a `ParsableCommand` instead.
+- **`main.swift` in an executable target.** Both CLIs used top-level code; they
+  are now `@main` types, which is what lets a test target import them.
 
 ## Troubleshooting
 
@@ -551,6 +576,13 @@ are no component-level AGENTS.md files.
   request body as the commit message — so a merge like that would also skip
   the release. Write the marker as "skip-ci" in prose and keep the literal
   form inside `release.yml`.
+- **A CLI change makes the test suite hang or burn CPU**: something is calling
+  `SourceRegistry.makeAll()` per access. It builds real readers, and `SMCSource`
+  opens an IOKit connection. `SourceRegistry.allIDs` is a stored property for
+  this reason — it was a computed one, and putting it in a `--help` string that
+  ArgumentParser rebuilds on every parse took `CommandLineTests` from under a
+  second to over four minutes. Interpolate `SourceSelection.known`, not a fresh
+  registry build.
 - **CPU shows no cluster series**: correct on a machine with one performance
   level, or when the `hw.perflevel*` core counts do not sum to the core count.
   `CPUSource.readClusters` returns empty rather than guess a wrong split.
