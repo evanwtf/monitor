@@ -91,7 +91,7 @@ public actor CSVLogSink: SampleSink {
         let formatter = DateFormatter()
         formatter.timeZone = .current
         formatter.dateFormat = "yyyy_MM_dd"
-        return "sensors.\(sanitized(hostname)).\(formatter.string(from: date)).log"
+        return "sensors.\(Self.sanitized(hostname)).\(formatter.string(from: date)).log"
     }
 
     private func sweep(now: TimeInterval) {
@@ -101,7 +101,7 @@ public actor CSVLogSink: SampleSink {
             at: directory, includingPropertiesForKeys: nil
         )) ?? []
         for file in files
-            where file.lastPathComponent.hasPrefix("sensors.\(sanitized(hostname)).")
+            where file.lastPathComponent.hasPrefix("sensors.\(Self.sanitized(hostname)).")
         {
             guard let period = LogRetention.period(from: file.lastPathComponent)
             else { continue }
@@ -112,9 +112,9 @@ public actor CSVLogSink: SampleSink {
     }
 
     /// A hostname becomes a safe filename fragment: lowercased, and any
-    /// character outside [a-z0-9-_] collapsed to a single underscore, so
+    /// character outside [a-z0-9-_] replaced with a single underscore, so
     /// "MacBook-Pro.local" reads as "macbook-pro_local".
-    private func sanitized(_ hostname: String) -> String {
+    static func sanitized(_ hostname: String) -> String {
         hostname
             .lowercased()
             .replacingOccurrences(
