@@ -48,12 +48,16 @@ struct MonitorExporterCommand: ParsableCommand {
     }
 
     func run() throws {
-        // Task 5 replaces this body with the server. For now it proves the
-        // sources resolve and the front door works.
         let sources = SourceRegistry.make(ids: Self.gapSourceIDs)
-        print(
-            "monitor-exporter: \(sources.count) source(s) ready on \(bindAddress):\(bindPort)"
-        )
+        let handler = MetricsHandler(sources: sources)
+        let server = try MetricsServer(host: bindAddress, port: bindPort) {
+            handler.exposition()
+        }
+        server.start()
+        // A CLI whose job is output: monitord prints its startup line the same
+        // way. The server runs on its own queue, so hold the process open.
+        print("monitor-exporter: serving /metrics on \(bindAddress):\(bindPort)")
+        RunLoop.main.run()
     }
 }
 
