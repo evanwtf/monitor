@@ -125,5 +125,11 @@ let package = Package(
         // a given tick. Both are arithmetic, and both are wrong in ways that
         // look like a rendering glitch, so they are worth testing directly.
         .testTarget(name: "MonitorUITests", dependencies: ["MonitorUI", "MonitorCore"]),
+        // The handler (with a fake source, no hardware) and the server (routing
+        // pure, plus one real bound-port scrape).
+        .testTarget(
+            name: "MonitorExporterTests",
+            dependencies: ["MonitorExporter", "MonitorCore", "MonitorPrometheus"]
+        ),
     ]
 )
