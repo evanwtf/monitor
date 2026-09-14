@@ -48,8 +48,10 @@ Swift constant, so the app's title bar cannot claim a stale build.
 
 Grab the latest `monitor-*.zip` from
 [Releases](https://github.com/evanwtf/monitor/releases/latest), unzip it, and
-drag `monitor.app` to Applications. The zip also contains `monitord` and
-`monitor-exporter`, so a downloader runs either with no toolchain installed.
+drag `monitor.app` to Applications. The zip also contains `monitord`,
+`monitor-exporter` and `install-exporter.sh`, so a downloader runs either binary
+with no toolchain — or `./install-exporter.sh` to set the exporter up as a
+launchd service.
 
 Releases are ad-hoc signed and not notarized unless the repository's
 `SIGN_IDENTITY` and `NOTARY_PROFILE` variables are set, in which case the
