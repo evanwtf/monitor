@@ -38,9 +38,11 @@ let package = Package(
         .library(name: "MonitorStore", targets: ["MonitorStore"]),
         .library(name: "MonitorUI", targets: ["MonitorUI"]),
         .library(name: "MonitorLog", targets: ["MonitorLog"]),
+        .library(name: "MonitorPrometheus", targets: ["MonitorPrometheus"]),
         .executable(name: "monitor", targets: ["monitor"]),
         .executable(name: "monitorctl", targets: ["monitorctl"]),
         .executable(name: "monitord", targets: ["monitord"]),
+        .executable(name: "monitor-exporter", targets: ["MonitorExporter"]),
     ],
     dependencies: [
         // The only third-party dependency, and it is Apple's. Both CLIs used to
@@ -61,6 +63,11 @@ let package = Package(
         // The rotating CSV logger. `monitord` writes it; the app never links it,
         // so the app still has no code path that reaches the filesystem.
         .target(name: "MonitorLog", dependencies: ["MonitorCore"]),
+        // The Prometheus exposition-format renderer and the sensor-metric
+        // mapping. Pure MonitorCore, no macOS APIs and no new dependency, so
+        // the format is a golden-file test rather than a hand-rolled printer
+        // nobody checks. Read by monitor-exporter.
+        .target(name: "MonitorPrometheus", dependencies: ["MonitorCore"]),
         // Note the absence of MonitorStore in the next three targets. That is
         // the point, not an oversight.
         .target(name: "MonitorUI", dependencies: ["MonitorCore", "MonitorSources"]),
@@ -70,31 +77,59 @@ let package = Package(
             dependencies: [
                 "MonitorCore", "MonitorSources",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ]),
+            ]
+        ),
         .executableTarget(
             name: "monitord",
             dependencies: [
                 "MonitorLog", "MonitorSources",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ]),
+            ]
+        ),
+        // The Prometheus exporter. Reads the gap sources node_exporter cannot
+        // read on macOS (SMC, GPU) at scrape time and serves them on
+        // GET /metrics. Links MonitorPrometheus for the format, never MonitorLog
+        // or MonitorStore — it writes no files.
+        .executableTarget(
+            name: "MonitorExporter",
+            dependencies: [
+                "MonitorPrometheus", "MonitorSources", "MonitorCore",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ]
+        ),
         .testTarget(name: "MonitorCoreTests", dependencies: ["MonitorCore"]),
         .testTarget(
             name: "MonitorSourcesTests",
-            dependencies: ["MonitorSources", "MonitorCore"]),
+            dependencies: ["MonitorSources", "MonitorCore"]
+        ),
         .testTarget(name: "MonitorStoreTests", dependencies: ["MonitorStore", "MonitorCore"]),
         .testTarget(name: "MonitorLogTests", dependencies: ["MonitorLog", "MonitorCore"]),
+        // The renderer's format is golden-file tested; the mapping is tested
+        // against the real SMCSource/GPUSource MetricID constants, so a renamed
+        // id breaks the test rather than the exporter silently dropping a metric.
+        .testTarget(
+            name: "MonitorPrometheusTests",
+            dependencies: ["MonitorPrometheus", "MonitorCore", "MonitorSources"]
+        ),
         // The two CLIs' argument parsing. The bug that motivated it (#48) was
         // invisible to every other suite: both binaries built, ran and sampled
         // correctly, and only their front doors were wrong.
         .testTarget(
             name: "CommandLineTests",
             dependencies: [
-                "monitorctl", "monitord", "MonitorCore",
+                "monitorctl", "monitord", "MonitorExporter", "MonitorCore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ]),
+            ]
+        ),
         // AppModel decides what the panel draws and which sources are read on
         // a given tick. Both are arithmetic, and both are wrong in ways that
         // look like a rendering glitch, so they are worth testing directly.
         .testTarget(name: "MonitorUITests", dependencies: ["MonitorUI", "MonitorCore"]),
+        // The handler (with a fake source, no hardware) and the server (routing
+        // pure, plus one real bound-port scrape).
+        .testTarget(
+            name: "MonitorExporterTests",
+            dependencies: ["MonitorExporter", "MonitorCore", "MonitorPrometheus"]
+        ),
     ]
 )

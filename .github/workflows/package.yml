@@ -68,8 +68,9 @@ jobs:
           version="$(sed -n 's/.*static let string = "\(.*\)".*/\1/p' \
               Sources/MonitorCore/Version.swift)"
           name="monitor-${version}.zip"
-          # The package dir holds monitor.app/ and monitord side by side; ditto
-          # without --keepParent puts both at the top level of the zip.
+          # The package dir holds monitor.app/, monitord and monitor-exporter
+          # side by side; ditto without --keepParent puts them all at the top
+          # level of the zip.
           ditto -c -k .build/package "$name"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 

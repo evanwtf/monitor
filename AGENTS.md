@@ -56,6 +56,7 @@ swift run monitorctl read        # read every metric once
 swift run monitorctl watch --source disk --interval 0.5
 swift run monitorctl watch --json --count 5        # machine-readable, bounded
 swift run monitord --retention 7d --dir /tmp/logs  # rotating CSV logger
+swift run monitor-exporter       # serve /metrics on 127.0.0.1:9650 for Prometheus
 swift run monitorctl --help      # generated from the declarations, never hand-written
 swift run monitord --version     # version and the commit it was built from
 swiftformat Sources Tests Plugins --lint --cache ignore   # CI lint gate
@@ -89,11 +90,19 @@ Sources/
                    linked into the app — see "Guardrails" below.
   MonitorLog/      the rotating CSV logger: CSVLogSink. Written by monitord;
                    never linked into the app.
+  MonitorPrometheus/ the Prometheus exposition-format renderer (Exposition.swift)
+                   and the sensor-metric mapping (PrometheusMapping.swift). Pure
+                   MonitorCore, no macOS APIs, no dependency. Read by the exporter.
   monitor/         the app target (@main SwiftUI App) and its AppDelegate
   monitorctl/      headless CLI harness: Monitorctl.swift, an ArgumentParser
                    root with list/read/watch subcommands
   monitord/        headless daemon that logs every metric to rotating CSV:
                    Monitord.swift, an ArgumentParser command
+  MonitorExporter/ headless daemon that serves the SMC and GPU sensors as
+                   Prometheus metrics on GET /metrics (MonitorExporter.swift
+                   command, MetricsHandler.swift, MetricsServer.swift). Binary
+                   is monitor-exporter. Exports only the macOS gap node_exporter
+                   cannot read; never links MonitorLog or MonitorStore.
 Plugins/
   StampCommit/     prebuild plugin: writes the commit into a Swift constant
                    before every build, so the title bar cannot go stale
@@ -101,8 +110,9 @@ Scripts/           make-app.sh, which builds monitor.app, make-icon.swift,
                    which draws its icon, and notarize.sh, which notarizes and
                    staples a Developer ID build
 Tests/             MonitorCoreTests, MonitorSourcesTests, MonitorStoreTests,
-                   MonitorLogTests, MonitorUITests, CommandLineTests (the two
-                   CLIs' argument parsing — see "Making Changes")
+                   MonitorLogTests, MonitorPrometheusTests, MonitorExporterTests,
+                   MonitorUITests, CommandLineTests (the three headless tools'
+                   argument parsing — see "Making Changes")
 docs/              README.md is the index
 .github/workflows/
   ci.yml           build, test, release build, CLI smoke tests (including

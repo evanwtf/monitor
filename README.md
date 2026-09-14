@@ -30,6 +30,7 @@ Three executables, five libraries and a build plugin, in one SwiftPM package.
 | `monitor` | The SwiftUI app. Realtime panel of gauges and charts, ten minutes of in-memory history. | yes, as `monitor.app` |
 | `monitord` | Headless daemon. Samples every metric on one clock and writes rotating CSV. | yes, as a bare binary |
 | `monitorctl` | Headless CLI. Lists, reads and watches the same metrics in a terminal. | no — a development tool |
+| `monitor-exporter` | Headless daemon. Serves the SMC and GPU sensors as Prometheus metrics on `GET /metrics`. | yes, as a bare binary |
 
 | Library | What it holds |
 |---------|---------------|
@@ -38,6 +39,7 @@ Three executables, five libraries and a build plugin, in one SwiftPM package.
 | `MonitorUI` | The dashboard: theme, gauges, chart cards, preferences, drag-to-reorder, `AppModel`. |
 | `MonitorLog` | `CSVLogSink`, the rotating CSV writer. Used by `monitord`; never linked into the app. |
 | `MonitorStore` | SQLite history and retention. Written and tested, deliberately **not** linked into any executable — see [docs/storage.md](docs/storage.md). |
+| `MonitorPrometheus` | The Prometheus exposition-format renderer and the sensor-metric mapping. Pure `MonitorCore`; no macOS APIs, no dependency. Used by `monitor-exporter`. |
 
 `Plugins/StampCommit` is a prebuild plugin that writes the current commit into a
 Swift constant, so the app's title bar cannot claim a stale build.
@@ -46,8 +48,8 @@ Swift constant, so the app's title bar cannot claim a stale build.
 
 Grab the latest `monitor-*.zip` from
 [Releases](https://github.com/evanwtf/monitor/releases/latest), unzip it, and
-drag `monitor.app` to Applications. The zip also contains `monitord`, so a
-downloader runs `./monitord` with no toolchain installed.
+drag `monitor.app` to Applications. The zip also contains `monitord` and
+`monitor-exporter`, so a downloader runs either with no toolchain installed.
 
 Releases are ad-hoc signed and not notarized unless the repository's
 `SIGN_IDENTITY` and `NOTARY_PROFILE` variables are set, in which case the
@@ -120,8 +122,43 @@ appends to the previous run's file. Timestamps are ISO8601 in UTC plus epoch
 millis, and temperatures appear in both °C and °F. Run it as a launchd
 `LaunchAgent` to log for days.
 
-Both CLIs support `--help` and `--version`, print usage for an unrecognised
-flag, and exit non-zero rather than starting.
+### `monitor-exporter` — serve metrics to Prometheus
+
+```sh
+swift run monitor-exporter                                  # serve /metrics on 127.0.0.1:9650
+swift run monitor-exporter --bind-address 0.0.0.0           # reachable from a remote Prometheus
+./monitor-exporter --bind-port 9700                         # from the release zip
+curl -s localhost:9650/metrics
+```
+
+| Option | Meaning |
+|--------|---------|
+| `--bind-port <port>` | TCP port to listen on. Default `9650`. |
+| `--bind-address <addr>` | Address to bind. Default `127.0.0.1`; `0.0.0.0` for a remote Prometheus. |
+
+A long-running daemon that answers `GET /metrics` for a Prometheus server to
+scrape. It reads the sensors *at scrape time*, so the scrape interval is the
+sampling rate — there is nothing to configure. It exports only what
+node_exporter cannot read on macOS: the SMC (temperature, fans, power) and the
+GPU (utilization, VRAM). CPU, memory, disk and network are node_exporter's job,
+so nothing is scraped twice. A sensor this machine does not have produces **no
+series** rather than a zero — a fanless Mac has no `macos_smc_fan_rpm`. The
+metric names:
+
+| Metric | Labels |
+|--------|--------|
+| `macos_smc_temperature_celsius` | `sensor="cpu\|gpu\|storage\|battery\|enclosure\|ambient"` |
+| `macos_smc_fan_rpm` | `fan="1\|2\|…"` |
+| `macos_smc_power_watts` | `rail="input\|soc"` |
+| `macos_gpu_utilization_ratio` | — |
+| `macos_gpu_vram_used_bytes` | — |
+| `monitor_exporter_build_info` | `version`, `commit` (value always `1`) |
+
+Run it as a launchd `LaunchAgent`; [docs/exporter.md](docs/exporter.md) has the
+plist and a Prometheus `scrape_configs` job.
+
+All three headless tools support `--help` and `--version`, print usage for an
+unrecognised flag, and exit non-zero rather than starting.
 
 ## What it measures
 

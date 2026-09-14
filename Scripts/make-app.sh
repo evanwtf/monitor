@@ -133,30 +133,38 @@ fi
 
 echo "Built $app"
 
-# The daemon ships alongside the app, so a release zip has both at the top
-# level: monitor.app/ and monitord. Build it and stage the pair into
-# .build/package/, which the CI packaging step zips.
+# The headless binaries ship alongside the app, so a release zip has all three
+# at the top level: monitor.app/, monitord and monitor-exporter. Build them and
+# stage the set into .build/package/, which the CI packaging step zips.
 echo "Building monitord…"
 # --show-bin-path prints the path but does not build, so build first.
 swift build -c release --product monitord
 monitord="$(swift build -c release --product monitord --show-bin-path)/monitord"
 [ -x "$monitord" ] || { echo "no binary at $monitord" >&2; exit 1; }
 
-# The daemon must be signed too, or the notary service rejects the whole zip:
-# it scans every binary in the archive, and an unsigned one is "Invalid".
-if [ -n "$identity" ]; then
-    codesign --force --options runtime --timestamp --sign "$identity" "$monitord"
-else
-    codesign --force --sign - --timestamp=none "$monitord" >/dev/null 2>&1 \
-        || echo "warning: could not sign $monitord; it will still run" >&2
-fi
+echo "Building monitor-exporter…"
+swift build -c release --product monitor-exporter
+exporter="$(swift build -c release --product monitor-exporter --show-bin-path)/monitor-exporter"
+[ -x "$exporter" ] || { echo "no binary at $exporter" >&2; exit 1; }
+
+# Every binary in the archive must be signed, or the notary service rejects the
+# whole zip: it scans them all, and an unsigned one is "Invalid".
+for binary in "$monitord" "$exporter"; do
+    if [ -n "$identity" ]; then
+        codesign --force --options runtime --timestamp --sign "$identity" "$binary"
+    else
+        codesign --force --sign - --timestamp=none "$binary" >/dev/null 2>&1 \
+            || echo "warning: could not sign $binary; it will still run" >&2
+    fi
+done
 
 package=".build/package"
 rm -rf "$package"
 mkdir -p "$package"
 cp -R "$app" "$package/monitor.app"
 cp "$monitord" "$package/monitord"
-echo "Staged $package (monitor.app, monitord)"
+cp "$exporter" "$package/monitor-exporter"
+echo "Staged $package (monitor.app, monitord, monitor-exporter)"
 
 if [ -n "$destination" ]; then
     mkdir -p "$destination"
