@@ -52,7 +52,7 @@ jobs:
       - name: Smoke test CLI help and version
         run: |
           set -euo pipefail
-          for binary in monitorctl monitord; do
+          for binary in monitorctl monitord monitor-exporter; do
             swift run -c release "$binary" --help
             swift run -c release "$binary" --version
           done
@@ -60,6 +60,7 @@ jobs:
           # non-zero exit is the pass condition.
           ! swift run -c release monitord --nonsense
           ! swift run -c release monitorctl list --nonsense
+          ! swift run -c release monitor-exporter --nonsense
 
       # monitord --help must not leave a CSV behind: writing one is exactly the
       # symptom #48 reported.
@@ -73,6 +74,25 @@ jobs:
             ls -la "$dir"
             exit 1
           fi
+
+      # Boot the exporter and scrape it once, the front-door check the argument
+      # tests cannot make: a served /metrics with the right shape. The runner is
+      # an M-series Mac with fans and a real GPU, so the full set is present —
+      # unlike a fanless machine, where the fan series is correctly absent.
+      - name: Smoke test the exporter endpoint
+        run: |
+          set -euo pipefail
+          swift build -c release --product monitor-exporter
+          bin="$(swift build -c release --product monitor-exporter --show-bin-path)/monitor-exporter"
+          "$bin" --bind-port 9650 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          # --retry-connrefused rather than a fixed sleep: connect as soon as the
+          # listener is up, and fail only if it never comes up.
+          body="$(curl --retry 20 --retry-connrefused --retry-delay 1 -fsS http://127.0.0.1:9650/metrics)"
+          echo "$body"
+          echo "$body" | grep -q monitor_exporter_build_info
+          echo "$body" | grep -q 'macos_smc_temperature_celsius{sensor="cpu"}'
 
   lint:
     name: Format check
