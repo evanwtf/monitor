@@ -33,8 +33,34 @@ label; the scrape target's `instance` identifies the Mac.
 
 ## Run it as a launchd LaunchAgent
 
-Save as `~/Library/LaunchAgents/wtf.evan.monitor-exporter.plist`, then
-`launchctl load` it. Adjust the binary path to where you unzipped the release.
+### The one-command way
+
+From a repo checkout or an unpacked release zip:
+
+```sh
+Scripts/install-exporter.sh          # from a checkout — builds a release binary first
+./install-exporter.sh                # from a release zip — installs the binary beside it
+```
+
+It installs the compiled binary to `/usr/local/bin/monitor-exporter` (the one
+`sudo` step), writes the LaunchAgent below, loads it, and scrapes the endpoint
+once to confirm. Set the port or bind address first:
+
+```sh
+MONITOR_EXPORTER_PORT=9700 MONITOR_EXPORTER_ADDRESS=0.0.0.0 Scripts/install-exporter.sh
+```
+
+Re-running is idempotent. To remove it:
+
+```sh
+launchctl bootout "gui/$(id -u)/wtf.evan.monitor-exporter"
+rm ~/Library/LaunchAgents/wtf.evan.monitor-exporter.plist
+sudo rm /usr/local/bin/monitor-exporter
+```
+
+### By hand
+
+The script writes this to `~/Library/LaunchAgents/wtf.evan.monitor-exporter.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -49,21 +75,23 @@ Save as `~/Library/LaunchAgents/wtf.evan.monitor-exporter.plist`, then
         <string>/usr/local/bin/monitor-exporter</string>
         <string>--bind-port</string>
         <string>9650</string>
+        <string>--bind-address</string>
+        <string>127.0.0.1</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
-    <key>StandardErrorPath</key>
-    <string>/tmp/monitor-exporter.log</string>
     <key>StandardOutPath</key>
-    <string>/tmp/monitor-exporter.log</string>
+    <string>/Users/you/Library/Logs/monitor-exporter.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/you/Library/Logs/monitor-exporter.log</string>
 </dict>
 </plist>
 ```
 
 ```sh
-launchctl load ~/Library/LaunchAgents/wtf.evan.monitor-exporter.plist
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/wtf.evan.monitor-exporter.plist
 curl -s localhost:9650/metrics   # confirm it answers
 ```
 

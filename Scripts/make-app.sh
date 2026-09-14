@@ -164,7 +164,12 @@ mkdir -p "$package"
 cp -R "$app" "$package/monitor.app"
 cp "$monitord" "$package/monitord"
 cp "$exporter" "$package/monitor-exporter"
-echo "Staged $package (monitor.app, monitord, monitor-exporter)"
+# The exporter's installer ships beside the binary, so a downloader can run
+# ./install-exporter.sh straight from the unpacked zip: it finds the signed
+# binary next to it and installs it as a launchd agent, no toolchain needed.
+cp "$root/Scripts/install-exporter.sh" "$package/install-exporter.sh"
+chmod +x "$package/install-exporter.sh"
+echo "Staged $package (monitor.app, monitord, monitor-exporter, install-exporter.sh)"
 
 if [ -n "$destination" ]; then
     mkdir -p "$destination"
