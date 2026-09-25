@@ -113,6 +113,17 @@ public final class AppModel {
     /// lives.
     public var totalGap: TimeInterval { interval * Self.totalGapTicks }
 
+    /// The widest spacing a smoothing window still treats as one run.
+    ///
+    /// Four ticks of the *slowest* clock, not the master one: sensors can be
+    /// read every five seconds, and a gap measured in master ticks would call
+    /// every sensor sample the start of a new run and smooth nothing. This is a
+    /// sleep detector, not a precision measurement, so erring wide costs
+    /// nothing a reader would notice.
+    public var smoothingGap: TimeInterval {
+        max(interval, sampling.effectiveSensorInterval) * Self.totalGapTicks
+    }
+
     public let descriptors: [MetricID: MetricDescriptor]
     private let sampler: Sampler
     private var pump: Task<Void, Never>?

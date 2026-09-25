@@ -411,6 +411,87 @@ same reason. Zero draws as an idle machine rather than as a missing number.
 interval is this same arithmetic, and a "Total" row under the Time column is a
 type error waiting to be pasted into a chart.
 
+## Smoothing a spiky card
+
+Some series switch between idle and flat out every second or two. Under a
+bursty load the GPU and Power cards become a solid block of colour: 1,200
+samples drawn into a card a few hundred points wide, each one a vertical
+stroke. Right-click a card and choose from its **Smoothing** section:
+
+| Choice | Draws | Use it when |
+|---|---|---|
+| **Average** | a rolling mean | you want the level under the noise |
+| **Median** | a rolling median | one outlier is noise, not the event — it drops a lone spike that the mean would smear |
+| **Min–max band** | the window's minimum to maximum as a band, with the mean as a line | a load switches on and off, and you want to see that it does |
+
+The **Window** section below it sets 5 s, 15 s or 1 min. Switching a method
+keeps the window, so average and median can be compared over the same span;
+switching on from Off starts at 15 s. **Off by default**, per card, and
+stored in `ChartPreferences.smoothing` keyed by the card's group name. The
+math is `Rolling` in `MonitorCore/Smoothing.swift`.
+
+The band is usually the right first choice. On the GPU card, a band from 0 to
+100% with a line at 40% says "it switches on and off, and is on about 40% of
+the time". A plain average says "40%", which the GPU never was.
+
+The two are flat sections of the right-click menu, not a submenu. The card
+redraws every tick and its menu is rebuilt with it. SwiftUI updates top-level
+items in place but replaces a nested `Menu` outright, so an open Smoothing
+submenu blinked out and back once a tick. Making it `Equatable` did not help.
+
+### Only the picture changes
+
+The same rule as mirroring. The legend still shows the latest **raw** reading,
+the gauges still read the raw sample, and Copy Data and the window totals still
+see the buffer as the source wrote it. `WindowTotal` must never read a smoothed
+value, or "moved 2 GB" stops matching the counter delta.
+
+### A smoothed card says so
+
+The header carries a boxed tag — `avg 15 s`, `median 5 s`, `min–max 1 min`. A
+smoothed chart that passes for raw data in a screenshot is the quiet kind of
+wrong. The tag also explains why the end of the line does not meet the value
+in the legend: a trailing window runs about half a window behind the samples.
+
+### Seconds, trailing, and never across a gap
+
+- **The window is in seconds, not samples.** The Sampling tab changes the
+  rate, and sensors already run slower than counters. A count of samples would
+  cover a different span on every card.
+- **Trailing, not centred.** A centred window has nothing to put at the
+  right-hand edge, which on a live chart is the edge that matters.
+- **A gap starts a new window.** Two neighbouring samples further apart than
+  `AppModel.smoothingGap` — four ticks of the *slower* of the two clocks — are
+  two runs. A laptop back from sleep must not blend the reading before sleep
+  into the reading after it.
+- **The window reaches past the left edge.** Smoothing reads the whole buffer
+  and cuts to the window afterwards, so the first visible point is a full
+  window's average rather than a single sample.
+
+### A stacked card smooths by the mean only
+
+The mean is linear, so smoothed slices still add up to the smoothed aggregate,
+and the Memory Used line still sits on top of its bands. A median is not: the
+medians of the slices do not sum to the median of the whole. A band per slice
+on top of stacked bands is unreadable. So on a stacked card the Median and
+Min–max band items are disabled. A choice made while stacking was off draws
+as the mean over the same window, and the tag names the method actually drawn.
+`SmoothingTests` pins both halves of the argument.
+
+### The y-axis follows what is drawn
+
+A smoothed line scaled to the raw spikes it smoothed away would sit in the
+bottom fifth of an empty card, so the axis scales to the drawn line. A band
+reaches the raw maximum anyway. Fractions stay pinned to 0–100%.
+
+### Why not a list of percentiles
+
+The first idea was p50, p75, p90, p95, p99 and p99.999. A 15 s window holds 30
+samples at 0.5 s, and with 30 samples p95 and above are all the maximum; p99.999
+needs about 100,000 samples, and the whole buffer holds 1,200. Offering them
+would suggest a precision the data does not have. The median is the percentile
+worth having, and the band covers the top end.
+
 ## The time axis
 
 Three things have to be true of the labels along the bottom, and the first two

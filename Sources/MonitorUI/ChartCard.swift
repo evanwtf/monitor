@@ -41,6 +41,13 @@ public struct ChartCard: View {
     /// Draw the time labels on their side. Passed in for the same reason the
     /// three above are: it is a preference, and a card does not read them.
     public var rotatesTimeLabels: Bool = false
+    /// How to smooth what is drawn, or nil to draw the samples as they are.
+    /// Passed in, already reconciled with stacking, for the same reason the
+    /// settings above are: a card does not read preferences.
+    public var smoothing: Smoothing?
+    /// The widest spacing a smoothing window treats as one run. The model owns
+    /// the sampling clock, so the model says.
+    public var smoothingGap: TimeInterval = 2
 
     public init(
         title: String,
@@ -51,7 +58,9 @@ public struct ChartCard: View {
         mirror: MetricPair? = nil,
         stacked: [MetricID] = [],
         totalGap: TimeInterval? = nil,
-        rotatesTimeLabels: Bool = false
+        rotatesTimeLabels: Bool = false,
+        smoothing: Smoothing? = nil,
+        smoothingGap: TimeInterval = 2
     ) {
         self.title = title
         self.series = series
@@ -65,6 +74,8 @@ public struct ChartCard: View {
         self.stacked = mirror == nil ? stacked : []
         self.totalGap = totalGap
         self.rotatesTimeLabels = rotatesTimeLabels
+        self.smoothing = smoothing
+        self.smoothingGap = smoothingGap
     }
 
     public var body: some View {
@@ -72,12 +83,15 @@ public struct ChartCard: View {
         // from three places: it walks every series' whole buffer, and the card
         // redraws on every tick.
         let totals = totals
+        // Bound once for the same reason: smoothing walks every buffer, and the
+        // chart, its y-scale and its stack height all read the result.
+        let drawn = drawn
         return VStack(alignment: .leading, spacing: 5) {
             header(totals)
             if isUnavailable {
                 unavailableNotice
             } else {
-                chart
+                chart(drawn)
             }
         }
         .padding(Theme.Layout.cardPadding)
@@ -151,8 +165,29 @@ public struct ChartCard: View {
                     .foregroundStyle(Theme.label)
                     .lineLimit(1)
             }
+            if let smoothing {
+                smoothingTag(smoothing)
+            }
         }
         .fixedSize()
+    }
+
+    /// Says the card is smoothed, and how.
+    ///
+    /// Boxed rather than plain like the span beside it, so "2 min avg 15 s"
+    /// does not read as one phrase: the span is how much history there is, and
+    /// this is how it was drawn. A smoothed chart that passes for raw data in a
+    /// screenshot is the quiet kind of wrong.
+    private func smoothingTag(_ smoothing: Smoothing) -> some View {
+        Text(Format.smoothing(smoothing))
+            .font(.system(size: Theme.Layout.cardLegend, design: .monospaced))
+            .foregroundStyle(Theme.label)
+            .lineLimit(1)
+            .padding(.horizontal, 4)
+            .overlay(
+                RoundedRectangle(cornerRadius: 3)
+                    .strokeBorder(Theme.panelEdge, lineWidth: 1)
+            )
     }
 
     /// Current values in the header rather than in a legend below the chart:
@@ -351,6 +386,48 @@ public struct ChartCard: View {
         }
     }
 
+    /// One series as the chart draws it.
+    private struct Drawn {
+        let descriptor: MetricDescriptor
+        /// The line: the samples themselves, or the smoothed value at each.
+        let line: [Sample]
+        /// The min...max band behind the line. Empty unless the card is
+        /// smoothed as a band.
+        let band: [RollingPoint]
+    }
+
+    /// What the chart draws, per series, cut to the visible window.
+    ///
+    /// Smoothing reads `series` rather than `visible`, for the reason totals
+    /// do: the first visible point's window reaches back past the left edge,
+    /// and `visible` has already thrown those samples away. Cut afterwards.
+    ///
+    /// The legend and the totals never come through here. They read `series`,
+    /// so a smoothed card still reports the raw reading.
+    private var drawn: [Drawn] {
+        guard let smoothing else {
+            return visible.map { Drawn(descriptor: $0.descriptor, line: $0.points, band: []) }
+        }
+        let start = xRange.start
+        return series.map { entry in
+            let rolled = Rolling.points(
+                entry.points, window: smoothing.window, maximumGap: smoothingGap
+            ).filter { $0.timestamp >= start }
+            let line = rolled.map {
+                Sample(
+                    metric: entry.descriptor.id,
+                    timestamp: $0.timestamp,
+                    value: smoothing.line($0)
+                )
+            }
+            return Drawn(
+                descriptor: entry.descriptor,
+                line: line,
+                band: smoothing.drawsBand ? rolled : []
+            )
+        }
+    }
+
     // MARK: - Totals
 
     /// How much moved over the window, per series, in the rate's own base unit.
@@ -385,12 +462,8 @@ public struct ChartCard: View {
         return window - longest > totalGap ? longest : window
     }
 
-    private var chart: some View {
-        // Bound once rather than referenced inside the result builder: the
-        // tuple-typed series makes the builder expensive enough to type-check
-        // that the compiler warns about it.
-        let entries = visible
-        return Chart {
+    private func chart(_ entries: [Drawn]) -> some View {
+        Chart {
             // The baseline, drawn only when there is one to draw. On an
             // ordinary card zero is the bottom of the plot and the axis already
             // marks it; on a mirrored card it is the line the two directions
@@ -401,8 +474,23 @@ public struct ChartCard: View {
                     .foregroundStyle(Theme.panelEdge)
                     .lineStyle(StrokeStyle(lineWidth: 1))
             }
+            // Bands first, so every line sits on top of every band. Ranged
+            // area marks, which Swift Charts does not stack, each tagged with
+            // its own series so two bands on one card stay two shapes.
             ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
-                ForEach(entry.points, id: \.timestamp) { sample in
+                ForEach(entry.band, id: \.timestamp) { point in
+                    AreaMark(
+                        x: .value("Time", Date(timeIntervalSince1970: point.timestamp)),
+                        yStart: .value("Low", plotted(point.minimum, of: entry.descriptor)),
+                        yEnd: .value("High", plotted(point.maximum, of: entry.descriptor)),
+                        series: .value("Band", entry.descriptor.name)
+                    )
+                    .foregroundStyle(Theme.seriesColor(index).opacity(0.3))
+                    .interpolationMethod(.monotone)
+                }
+            }
+            ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
+                ForEach(entry.line, id: \.timestamp) { sample in
                     let x = PlottableValue.value(
                         "Time", Date(timeIntervalSince1970: sample.timestamp)
                     )
@@ -430,7 +518,7 @@ public struct ChartCard: View {
         .chartForegroundStyleScale(range: Theme.series)
         .chartLegend(.hidden)
         .chartXScale(domain: xDomain)
-        .chartYScale(domain: yDomain)
+        .chartYScale(domain: yDomain(entries))
         // Belt and braces with the filtering in `visible`: a sample can still
         // sit fractionally outside the domain at either edge, and an
         // unclipped line drawn past the plot rect runs over the axis labels
@@ -567,8 +655,8 @@ public struct ChartCard: View {
         descriptor.id == mirror?.down ? -value : value
     }
 
-    private var yDomain: ClosedRange<Double> {
-        let top = upperBound
+    private func yDomain(_ drawn: [Drawn]) -> ClosedRange<Double> {
+        let top = upperBound(drawn)
         // Symmetric about zero, so a rate reads the same distance from the
         // baseline whichever way it points. One shared scale, not one per
         // direction: the whole reason the two share a card is to be read
@@ -577,7 +665,7 @@ public struct ChartCard: View {
         return mirror == nil ? 0...top : -top...top
     }
 
-    private var upperBound: Double {
+    private func upperBound(_ drawn: [Drawn]) -> Double {
         if let descriptor = series.first?.descriptor {
             if descriptor.unit == .fraction { return 1 }
             if let maximum = descriptor.nominalMaximum { return maximum }
@@ -586,12 +674,16 @@ public struct ChartCard: View {
         // spike eight minutes off the left of a two-minute window flattens
         // everything you can actually see.
         //
+        // What is *drawn* on screen: a smoothed line scaled to the raw spikes
+        // it smoothed away would sit in the bottom fifth of an empty card. A
+        // band reaches the raw maximum anyway, so it keeps the headroom.
+        //
         // A stack is measured by its total height, not by its tallest band. Its
         // top is what the eye reads, and scaling to one band would push the
         // stack out through the top of the card.
-        let peak = max(
-            visible.flatMap { $0.points.map(\.value) }.max() ?? 1, stackedPeak ?? 0
-        )
+        let lines = drawn.flatMap { $0.line.map(\.value) }.max()
+        let bands = drawn.flatMap { $0.band.map(\.maximum) }.max()
+        let peak = max(lines ?? 1, bands ?? 0, stackedPeak(drawn) ?? 0)
         return max(peak * 1.15, .leastNonzeroMagnitude)
     }
 
@@ -615,11 +707,11 @@ public struct ChartCard: View {
 
     /// The tallest the stack gets inside the window: the parts summed per
     /// timestamp, then the largest of those sums.
-    private var stackedPeak: Double? {
+    private func stackedPeak(_ drawn: [Drawn]) -> Double? {
         guard !stacked.isEmpty else { return nil }
         var totals: [TimeInterval: Double] = [:]
-        for entry in visible where stacked.contains(entry.descriptor.id) {
-            for sample in entry.points {
+        for entry in drawn where stacked.contains(entry.descriptor.id) {
+            for sample in entry.line {
                 totals[sample.timestamp, default: 0] += sample.value
             }
         }

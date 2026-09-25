@@ -367,6 +367,11 @@ public struct DashboardView: View {
                         CSVExport.text(for: series, window: window)
                     } rendered: {
                         copyBackground(card.frame(width: model.arrangement.chartWidth))
+                    } more: {
+                        SmoothingMenu(
+                            current: card.smoothing,
+                            isStacked: !card.stacked.isEmpty
+                        ) { model.charts.smoothing[group.name] = $0 }
                     }
                     .reorderable(.chart(group.name), target: $dropTarget) { dragged, on, edge in
                         dropChart(dragged, on: on, edge: edge, in: section)
@@ -398,7 +403,11 @@ public struct DashboardView: View {
             // Nil switches totals off. The gap comes from the model because
             // that is where the sampling clock is.
             totalGap: model.charts.showsTotals ? model.totalGap : nil,
-            rotatesTimeLabels: model.charts.rotatesTimeLabels
+            rotatesTimeLabels: model.charts.rotatesTimeLabels,
+            smoothing: model.charts.smoothing(
+                for: group.name, drawing: drawn.map(\.descriptor)
+            ),
+            smoothingGap: model.smoothingGap
         )
     }
 
