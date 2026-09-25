@@ -203,12 +203,17 @@ jobs:
           command -v gh >/dev/null 2>&1 \
               || { echo "gh is not installed on this runner" >&2; exit 1; }
           cat > notes.md <<'NOTES'
-          Download the zip below, unzip it, and drag `monitor.app` to
-          Applications. macOS 14 or later, Apple silicon or Intel.
+          Download `monitor-*.dmg` below, open it, and drag Monitor to
+          Applications. macOS 14 or later, Apple silicon.
 
-          The zip also contains `monitord`, a headless daemon that logs every
-          metric to rotating CSV files. Run `./monitord` to log at 1s with 1d
-          retention, or pass `--retention` and `--interval` to change it.
+          `monitor-tools-*.zip` holds the headless tools, for use without the
+          app:
+
+          - `monitord` logs every metric to rotating CSV files. Run
+            `./monitord` to log at 1s with 1d retention, or pass
+            `--retention` and `--interval` to change it.
+          - `monitor-exporter` serves the SMC and GPU sensors as Prometheus
+            metrics. `./install-exporter.sh` installs it as a launchd agent.
           NOTES
 
           if [ "$NOTARIZED" != "true" ]; then
@@ -233,7 +238,8 @@ jobs:
               --generate-notes
 
   # A merge that bumped the version, or a release published by hand. Either
-  # way the zip is built the same way and attached to the tag.
+  # way the disk image and the tools zip are built the same way and attached
+  # to the tag.
   package:
     name: Package
     needs: tag

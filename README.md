@@ -25,12 +25,12 @@ and a headless CLI for reading the same metrics from a terminal.
 
 Three executables, five libraries and a build plugin, in one SwiftPM package.
 
-| Program | What it is | Shipped in the release zip |
-|---------|------------|----------------------------|
-| `monitor` | The SwiftUI app. Realtime panel of gauges and charts, ten minutes of in-memory history. | yes, as `monitor.app` |
-| `monitord` | Headless daemon. Samples every metric on one clock and writes rotating CSV. | yes, as a bare binary |
+| Program | What it is | Shipped in a release |
+|---------|------------|----------------------|
+| `monitor` | The SwiftUI app. Realtime panel of gauges and charts, ten minutes of in-memory history. | `monitor-*.dmg`, as `monitor.app` |
+| `monitord` | Headless daemon. Samples every metric on one clock and writes rotating CSV. | `monitor-tools-*.zip`, as a bare binary |
 | `monitorctl` | Headless CLI. Lists, reads and watches the same metrics in a terminal. | no — a development tool |
-| `monitor-exporter` | Headless daemon. Serves the SMC and GPU sensors as Prometheus metrics on `GET /metrics`. | yes, as a bare binary |
+| `monitor-exporter` | Headless daemon. Serves the SMC and GPU sensors as Prometheus metrics on `GET /metrics`. | `monitor-tools-*.zip`, as a bare binary |
 
 | Library | What it holds |
 |---------|---------------|
@@ -46,12 +46,14 @@ Swift constant, so the app's title bar cannot claim a stale build.
 
 ## Download
 
-Grab the latest `monitor-*.zip` from
-[Releases](https://github.com/evanwtf/monitor/releases/latest), unzip it, and
-drag `monitor.app` to Applications. The zip also contains `monitord`,
-`monitor-exporter` and `install-exporter.sh`, so a downloader runs either binary
-with no toolchain — or `./install-exporter.sh` to set the exporter up as a
-launchd service.
+Each [release](https://github.com/evanwtf/monitor/releases/latest) has two
+files. Apple silicon, macOS 14 or later.
+
+- **`monitor-*.dmg`** is the app. Open it and drag Monitor onto the
+  Applications folder beside it.
+- **`monitor-tools-*.zip`** holds `monitord`, `monitor-exporter` and
+  `install-exporter.sh`, so a downloader runs either binary with no toolchain —
+  or `./install-exporter.sh` to set the exporter up as a launchd service.
 
 Releases are ad-hoc signed and not notarized unless the repository's
 `SIGN_IDENTITY` and `NOTARY_PROFILE` variables are set, in which case the
@@ -200,7 +202,8 @@ than values.
 
 CI runs build, test, release build, CLI smoke tests and the format check on
 every pull request. Every merge to main ships a release: `release.yml` bumps
-the version, tags it, and attaches the zip built by `package.yml`. A
+the version, tags it, and attaches the disk image and the tools zip built by
+`package.yml`. A
 `release:minor`, `release:major` or `release:skip` label on the pull request
 changes that; a merge touching only docs and workflows publishes nothing.
 

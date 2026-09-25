@@ -1,7 +1,7 @@
 name: Package
 
-# Builds monitor.app, zips it, and — when it is given a release tag — attaches
-# the zip to that release.
+# Builds monitor.app and the headless tools, packages them as a disk image and
+# a zip, and — when it is given a release tag — attaches both to that release.
 #
 # It is a reusable workflow rather than a step in the release workflow because
 # a release can begin two ways: a merge to main that bumps the version, or a
@@ -11,7 +11,7 @@ on:
   workflow_call:
     inputs:
       tag:
-        description: Release tag to attach the zip to. Omit to only build it.
+        description: Release tag to attach the files to. Omit to only build them.
         required: false
         type: string
   workflow_dispatch:
@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   package:
-    name: Build and zip monitor.app
+    name: Build and package monitor.app
     # A self-hosted runner — a Mac on a desk. Only a merge to main, a published
     # release or a manual run reaches this workflow, and all three need write
     # access to the repository, so there is no fork path to guard against.
@@ -38,7 +38,7 @@ jobs:
       - name: Swift version
         run: swift --version
 
-      # A published zip must not contain code that fails its own gates, and a
+      # A published build must not contain code that fails its own gates, and a
       # tag can point anywhere — including at a commit that never ran CI.
       - name: Test
         run: swift test
@@ -53,50 +53,80 @@ jobs:
       #
       # Unset, a release is ad-hoc signed and unnotarized, exactly as before.
       # Set, a failure to sign or notarize fails the release rather than
-      # quietly publishing a zip nobody can open. See docs/signing.md.
+      # quietly publishing files nobody can open. See docs/signing.md.
       - name: Build monitor.app
         env:
           MONITOR_SIGN_IDENTITY: ${{ vars.SIGN_IDENTITY }}
         run: Scripts/make-app.sh
 
-      # ditto, not zip: a bundle holds symlinks and extended attributes, and
-      # zip flattens them. This is the command Apple's own notarization
-      # instructions use.
-      - name: Package
-        id: package
-        run: |
-          version="$(sed -n 's/.*static let string = "\(.*\)".*/\1/p' \
-              Sources/MonitorCore/Version.swift)"
-          name="monitor-${version}.zip"
-          # The package dir holds monitor.app/, monitord, monitor-exporter and
-          # install-exporter.sh side by side; ditto without --keepParent puts
-          # them all at the top level of the zip.
-          ditto -c -k .build/package "$name"
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-
-      # Between zipping and the checksum, because notarize.sh rebuilds the zip
-      # around the stapled bundle: a checksum taken before this describes a file
-      # that no longer exists.
+      # Before packaging, because the app has to be stapled before it goes into
+      # the disk image: stapler writes into the bundle, so an image made first
+      # would hold an unstapled app. The tools go in the same submission.
       - name: Notarize
         if: vars.NOTARY_PROFILE != ''
         env:
           MONITOR_NOTARY_PROFILE: ${{ vars.NOTARY_PROFILE }}
-        run: Scripts/notarize.sh .build/package "${{ steps.package.outputs.name }}"
+        run: Scripts/notarize.sh .build/package
 
-      - name: Checksum
-        id: checksum
+      # Two files, not one. The app goes in a disk image beside a link to
+      # /Applications, so installing it is one drag. The headless tools go in a
+      # zip of their own: binaries in the drag window would make it unclear what
+      # to drag.
+      - name: Package
+        id: package
         env:
-          ZIP: ${{ steps.package.outputs.name }}
+          MONITOR_SIGN_IDENTITY: ${{ vars.SIGN_IDENTITY }}
+          MONITOR_NOTARY_PROFILE: ${{ vars.NOTARY_PROFILE }}
         run: |
-          echo "sha=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          ls -lh "$ZIP"
+          set -euo pipefail
+          version="$(sed -n 's/.*static let string = "\(.*\)".*/\1/p' \
+              Sources/MonitorCore/Version.swift)"
+          dmg="monitor-${version}.dmg"
+          zip="monitor-tools-${version}.zip"
+
+          Scripts/make-dmg.sh .build/package/monitor.app "$dmg"
+
+          # Everything make-app.sh staged except the app. ditto, not zip, and
+          # without --keepParent so the tools sit at the top level of the zip,
+          # where install-exporter.sh expects to find the binary beside it.
+          #
+          # No extended attributes: the runner tags every file with
+          # com.apple.provenance, and ditto stores each attribute as a `._` file
+          # beside it, which `unzip` in Terminal leaves behind as clutter. The
+          # tools lose nothing, since a binary's signature is inside the file.
+          rm -rf .build/tools
+          mkdir .build/tools
+          rsync -a --exclude monitor.app .build/package/ .build/tools/
+          ditto -c -k --norsrc --noextattr --noacl .build/tools "$zip"
+
+          echo "dmg=$dmg" >> "$GITHUB_OUTPUT"
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+          ls -lh "$dmg" "$zip"
+
+      # After every step that writes the files, so each checksum describes
+      # what is uploaded. The checksums ride along as files rather than lines
+      # in the notes: re-running a failed publish then replaces them instead of
+      # appending a second copy.
+      - name: Checksum
+        env:
+          DMG: ${{ steps.package.outputs.dmg }}
+          ZIP: ${{ steps.package.outputs.zip }}
+        run: |
+          set -euo pipefail
+          shasum -a 256 "$DMG" > "$DMG.sha256"
+          shasum -a 256 "$ZIP" > "$ZIP.sha256"
+          cat "$DMG.sha256" "$ZIP.sha256"
 
       # Uploaded on every run, released or not, so a manual run is a way to get
       # a build without publishing anything.
       - uses: actions/upload-artifact@v4
         with:
           name: monitor-app
-          path: ${{ steps.package.outputs.name }}
+          path: |
+            ${{ steps.package.outputs.dmg }}
+            ${{ steps.package.outputs.dmg }}.sha256
+            ${{ steps.package.outputs.zip }}
+            ${{ steps.package.outputs.zip }}.sha256
           if-no-files-found: error
 
       - name: Attach to release
@@ -104,14 +134,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag }}
-          ZIP: ${{ steps.package.outputs.name }}
-          SHA: ${{ steps.checksum.outputs.sha }}
+          DMG: ${{ steps.package.outputs.dmg }}
+          ZIP: ${{ steps.package.outputs.zip }}
         run: |
           if ! command -v gh >/dev/null 2>&1; then brew install gh; fi
-          # The checksum rides along as a file rather than a line in the notes:
-          # re-running a failed publish then replaces it instead of appending a
-          # second copy.
-          echo "$SHA  $ZIP" > "$ZIP.sha256"
           # --clobber so a re-run replaces the assets rather than failing on a
           # name that already exists.
-          gh release upload "$TAG" "$ZIP" "$ZIP.sha256" --clobber
+          gh release upload "$TAG" "$DMG" "$DMG.sha256" "$ZIP" "$ZIP.sha256" --clobber

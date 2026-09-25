@@ -35,11 +35,11 @@ label; the scrape target's `instance` identifies the Mac.
 
 ### The one-command way
 
-From a repo checkout or an unpacked release zip:
+From a repo checkout or an unpacked `monitor-tools-*.zip`:
 
 ```sh
 Scripts/install-exporter.sh          # from a checkout — builds a release binary first
-./install-exporter.sh                # from a release zip — installs the binary beside it
+./install-exporter.sh                # from the tools zip — installs the binary beside it
 ```
 
 It installs the compiled binary to `/usr/local/bin/monitor-exporter` (the one
