@@ -56,6 +56,17 @@ extension View {
         csv: @escaping () -> String,
         @ViewBuilder rendered: @escaping () -> some View
     ) -> some View {
+        copyable(csv: csv, rendered: rendered) { EmptyView() }
+    }
+
+    /// The same menu, with more items under the two copies — a chart card's
+    /// Smoothing and Window sections. One `contextMenu` holding everything, because a
+    /// second one on the same view replaces the first rather than adding to it.
+    func copyable(
+        csv: @escaping () -> String,
+        @ViewBuilder rendered: @escaping () -> some View,
+        @ViewBuilder more: @escaping () -> some View
+    ) -> some View {
         contextMenu {
             Button {
                 CardExport.copyImage(rendered())
@@ -67,6 +78,7 @@ extension View {
             } label: {
                 Label("Copy Data", systemImage: "tablecells")
             }
+            more()
         }
     }
 }

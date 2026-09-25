@@ -76,7 +76,8 @@ Sources/
   MonitorCore/     metric model, ring buffer, downsampling, gauge auto-ranging,
                    seven-segment digit mapping, formatting, the sampling clock,
                    the layout, arrangement, chart and sampling preference
-                   models, CSV export, chart axis ticks. No macOS APIs — so all of it is testable
+                   models, CSV export, chart axis ticks, rolling smoothing.
+                   No macOS APIs — so all of it is testable
                    without a machine to read.
   MonitorSources/  the readers: CPU, memory, disk, network, GPU, SMC sensors
                    (temperature, fans, power), and the registry that lists them.
@@ -84,7 +85,8 @@ Sources/
   MonitorUI/       Theme (palette + Layout density), GaugeView, SevenSegmentText,
                    ChartCard, FlowLayout, DashboardView, PreferencesView,
                    SizePopover, ReorderDrag (drag-to-reorder for both grids),
-                   CardExport (right-click to copy a card), AppModel,
+                   CardExport (right-click to copy a card), SmoothingMenu
+                   (the card's Smoothing and Window menu sections), AppModel,
                    LayoutPreferencesStore (layout, sampling, arrangement)
   MonitorStore/    SQLite history and retention. Designed and tested but NOT
                    linked into the app — see "Guardrails" below.
@@ -237,6 +239,24 @@ are no component-level AGENTS.md files.
   a column of figures. Cards with nothing to total keep the flow. The reserved
   slot survives into the table — a `Grid` column sizes to its widest cell, so
   without it the column resizes whenever a total crosses a magnitude.
+- **A spiky card can be smoothed, and only the picture changes.** Right-click
+  a card for **Smoothing**: Average, Median or Min–max band, each over 5 s,
+  15 s or 1 min. Two flat sections in the right-click menu, **never a
+  submenu**: the card redraws every tick, and SwiftUI replaces a nested `Menu`
+  on each redraw, so an open submenu blinks once a tick. Per card, off by
+  default, stored in `ChartPreferences.smoothing` keyed by group name. The legend, gauges, Copy
+  Data and totals keep the **raw** samples — `WindowTotal` must never read a
+  smoothed value. `Rolling` in `MonitorCore` is a **trailing** window in
+  **seconds**, never samples, and starts a new window at any gap wider than
+  `AppModel.smoothingGap` (four ticks of the slower clock, so slow sensors are
+  not all gaps). It reads the whole buffer and cuts to the window afterwards,
+  like totals. A smoothed card carries a **boxed tag** in its header
+  (`avg 15 s`), because a smoothed chart must not pass for raw data. **A
+  stacked card smooths by the mean only**: the mean is linear, the median is
+  not, so a median per slice would not add up to the Used line. A stored median
+  or band on a stacked card draws as the mean, and the tag says so. The y-axis
+  scales to the drawn line, not the raw spikes. No percentile list: with 30
+  samples in a window, p95 and above are the maximum. See `docs/ui.md`.
 - **The time axis is computed, not automatic.** `ChartAxis` in `MonitorCore`.
   Three rules, and the first two versions traded one for another: a tick is an
   **instant** (10:42:00 sits at 10:42:00 and scrolls left keeping its label —
