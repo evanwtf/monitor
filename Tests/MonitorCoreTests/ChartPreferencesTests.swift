@@ -202,6 +202,67 @@ struct ChartPreferencesTests {
         #expect(decoded.showsTotals)
         #expect(decoded.rotatesTimeLabels == false)
     }
+
+    @Test("No card is smoothed until somebody asks")
+    func smoothingOffByDefault() {
+        #expect(ChartPreferences.default.smoothing.isEmpty)
+        #expect(ChartPreferences.default.smoothing(for: "Network", drawing: [netIn]) == nil)
+    }
+
+    @Test("Smoothing is chosen per card")
+    func smoothingPerCard() {
+        var preferences = ChartPreferences.default
+        preferences.smoothing["GPU"] = Smoothing(method: .band, window: 15)
+        #expect(
+            preferences.smoothing(for: "GPU", drawing: [netIn])
+                == Smoothing(method: .band, window: 15)
+        )
+        #expect(preferences.smoothing(for: "Network", drawing: [netIn]) == nil)
+    }
+
+    @Test("A stacked card smooths by the mean, whatever was chosen")
+    func stackedCardUsesMean() {
+        // Chosen while stacking was off, then stacking switched on. The median
+        // of each slice would no longer add up to the line drawn over them.
+        var preferences = ChartPreferences(stacksParts: true)
+        preferences.smoothing["Memory"] = Smoothing(method: .median, window: 60)
+        #expect(
+            preferences.smoothing(for: "Memory", drawing: [app, wired, used])
+                == Smoothing(method: .mean, window: 60)
+        )
+        // Not stacked, it keeps the choice.
+        preferences.stacksParts = false
+        #expect(
+            preferences.smoothing(for: "Memory", drawing: [app, wired, used])
+                == Smoothing(method: .median, window: 60)
+        )
+    }
+
+    @Test("Smoothing round-trips, and an old value decodes without it")
+    func smoothingCodable() throws {
+        var preferences = ChartPreferences(mirrorsPairs: true)
+        preferences.smoothing = [
+            "GPU": Smoothing(method: .band, window: 15),
+            "Power": Smoothing(method: .mean, window: 5),
+        ]
+        let data = try JSONEncoder().encode(preferences)
+        #expect(try JSONDecoder().decode(ChartPreferences.self, from: data) == preferences)
+
+        let stored = Data(#"{"mirrorsPairs":true}"#.utf8)
+        #expect(try JSONDecoder().decode(ChartPreferences.self, from: stored).smoothing == [:])
+    }
+
+    @Test("A smoothing method from a later version costs only the smoothing")
+    func unknownSmoothingMethod() throws {
+        // A downgrade after choosing a method this version has never heard of.
+        // The other settings were chosen too, and must survive it.
+        let stored = Data(
+            #"{"mirrorsPairs":true,"smoothing":{"GPU":{"method":"ewma","window":5}}}"#.utf8
+        )
+        let decoded = try JSONDecoder().decode(ChartPreferences.self, from: stored)
+        #expect(decoded.mirrorsPairs)
+        #expect(decoded.smoothing.isEmpty)
+    }
 }
 
 /// The directions the real sources declare, written out here because

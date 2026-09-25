@@ -107,16 +107,31 @@ public struct ChartPreferences: Codable, Equatable, Sendable {
     /// somebody running three big cards does not.
     public var rotatesTimeLabels: Bool
 
+    /// How each card is smoothed, keyed by the card's group name. A card with
+    /// no entry is drawn raw.
+    ///
+    /// Per card, unlike the three settings above, because the need is per
+    /// card: the GPU and Power cards are a solid block of colour under a
+    /// bursty load while Memory and Fans are already smooth. Chosen from the
+    /// card's own right-click menu rather than a tab, so the choice sits on the
+    /// thing it changes.
+    ///
+    /// Empty by default. A chart that changes shape on upgrade is worse than
+    /// one somebody switches on.
+    public var smoothing: [String: Smoothing]
+
     public init(
         mirrorsPairs: Bool = false,
         stacksParts: Bool = false,
         showsTotals: Bool = true,
-        rotatesTimeLabels: Bool = false
+        rotatesTimeLabels: Bool = false,
+        smoothing: [String: Smoothing] = [:]
     ) {
         self.mirrorsPairs = mirrorsPairs
         self.stacksParts = stacksParts
         self.showsTotals = showsTotals
         self.rotatesTimeLabels = rotatesTimeLabels
+        self.smoothing = smoothing
     }
 
     public static let `default` = ChartPreferences()
@@ -135,11 +150,30 @@ public struct ChartPreferences: Codable, Equatable, Sendable {
         return ChartStack.parts(of: descriptors)
     }
 
+    /// How this card should be smoothed, given what it draws: nil when it is
+    /// drawn raw.
+    ///
+    /// A stacked card smooths by the mean whatever was chosen, keeping the
+    /// window. The choice may have been made while stacking was off; the median
+    /// of each slice would no longer add up to the aggregate drawn over them.
+    /// The card's label names the method actually drawn, so nothing about the
+    /// substitution is hidden.
+    public func smoothing(
+        for group: String, drawing descriptors: [MetricDescriptor]
+    ) -> Smoothing? {
+        guard let chosen = smoothing[group] else { return nil }
+        if !chosen.method.isStackable, !stack(for: descriptors).isEmpty {
+            return Smoothing(method: .mean, window: chosen.window)
+        }
+        return chosen
+    }
+
     private enum CodingKeys: String, CodingKey {
         case mirrorsPairs
         case stacksParts
         case showsTotals
         case rotatesTimeLabels
+        case smoothing
     }
 
     /// `decodeIfPresent`, so a value written before a setting existed still
@@ -150,11 +184,18 @@ public struct ChartPreferences: Codable, Equatable, Sendable {
         let stacks = try container.decodeIfPresent(Bool.self, forKey: .stacksParts)
         let totals = try container.decodeIfPresent(Bool.self, forKey: .showsTotals)
         let rotates = try container.decodeIfPresent(Bool.self, forKey: .rotatesTimeLabels)
+        // `try?`: a method written by a later version is unknown here, and
+        // should cost the smoothing choices rather than every setting beside
+        // them.
+        let smoothing = try? container.decodeIfPresent(
+            [String: Smoothing].self, forKey: .smoothing
+        )
         self.init(
             mirrorsPairs: mirrors ?? ChartPreferences.default.mirrorsPairs,
             stacksParts: stacks ?? ChartPreferences.default.stacksParts,
             showsTotals: totals ?? ChartPreferences.default.showsTotals,
-            rotatesTimeLabels: rotates ?? ChartPreferences.default.rotatesTimeLabels
+            rotatesTimeLabels: rotates ?? ChartPreferences.default.rotatesTimeLabels,
+            smoothing: smoothing ?? ChartPreferences.default.smoothing
         )
     }
 }

@@ -120,6 +120,20 @@ public enum Format {
             : String(format: "%.1f s", seconds)
     }
 
+    /// What a smoothed card says beside its title: "avg 15 s", "median 1 min".
+    ///
+    /// A smoothed chart must not pass for raw data in a screenshot, and the
+    /// label also explains why the end of the line does not meet the latest
+    /// reading in the legend.
+    public static func smoothing(_ smoothing: Smoothing) -> String {
+        let name = switch smoothing.method {
+        case .mean: "avg"
+        case .median: "median"
+        case .band: "min–max"
+        }
+        return "\(name) \(span(smoothing.window))"
+    }
+
     /// A span of history as a *label*, matching the History picker's wording:
     /// "2 min", "10 min", "45 s".
     ///
