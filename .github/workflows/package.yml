@@ -89,10 +89,15 @@ jobs:
           # Everything make-app.sh staged except the app. ditto, not zip, and
           # without --keepParent so the tools sit at the top level of the zip,
           # where install-exporter.sh expects to find the binary beside it.
+          #
+          # No extended attributes: the runner tags every file with
+          # com.apple.provenance, and ditto stores each attribute as a `._` file
+          # beside it, which `unzip` in Terminal leaves behind as clutter. The
+          # tools lose nothing, since a binary's signature is inside the file.
           rm -rf .build/tools
           mkdir .build/tools
           rsync -a --exclude monitor.app .build/package/ .build/tools/
-          ditto -c -k .build/tools "$zip"
+          ditto -c -k --norsrc --noextattr --noacl .build/tools "$zip"
 
           echo "dmg=$dmg" >> "$GITHUB_OUTPUT"
           echo "zip=$zip" >> "$GITHUB_OUTPUT"
