@@ -99,15 +99,20 @@ jobs:
           # not reliably there at the moment this runs: the same query answered
           # correctly for two merges and returned nothing for the next two, all
           # four carrying the label, and every one of those shipped as a patch
-          # because an empty answer and "no labels" are the same value. A squash
-          # merge writes the number into its own subject, so this reads what the
-          # merge itself says.
+          # because an empty answer and "no labels" are the same value. Both
+          # kinds of merge write the number into their own subject — a squash
+          # as "(#N)" at the end, a merge commit as "Merge pull request #N
+          # from …" — so this reads what the merge itself says.
           #
-          # A direct push to main has no number in its subject, which is simply
-          # no labels — that path still gets the patch default, on purpose.
+          # The script used to match only the squash shape, so every merge
+          # commit read as unlabelled and shipped a patch (#53). It now stops
+          # the release on a merge commit with no number, rather than guess.
+          # A direct push to main has no number and one parent, which is
+          # simply no labels — that path still gets the patch default, on
+          # purpose. Scripts/test-release-pr-number.sh covers every case.
           labels=""
-          number="$(git log -1 --pretty=%s \
-              | sed -n 's/.*(#\([0-9][0-9]*\))$/\1/p')"
+          number="$(Scripts/release-pr-number.sh "$(git log -1 --pretty=%s)" \
+              "$(git log -1 --pretty=%P | wc -w)")"
           if [ -n "$number" ]; then
             # No `|| true`. The previous version swallowed every failure into an
             # empty label list, so a broken lookup was indistinguishable from an

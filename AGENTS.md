@@ -63,6 +63,7 @@ swiftformat Sources Tests Plugins --lint --cache ignore   # CI lint gate
 Scripts/make-app.sh [dest]       # wrap the release binary in monitor.app
 Scripts/make-icon.swift out.icns # draw the app icon (make-app.sh calls this)
 Scripts/notarize.sh app zip      # notarize a Developer ID build and staple it
+Scripts/test-release-pr-number.sh # the release label lookup's cases (CI runs it)
 ```
 
 `monitorctl` exists because sampling is the part most likely to be wrong and the
@@ -109,8 +110,10 @@ Plugins/
   StampCommit/     prebuild plugin: writes the commit into a Swift constant
                    before every build, so the title bar cannot go stale
 Scripts/           make-app.sh, which builds monitor.app, make-icon.swift,
-                   which draws its icon, and notarize.sh, which notarizes and
-                   staples a Developer ID build
+                   which draws its icon, notarize.sh, which notarizes and
+                   staples a Developer ID build, and release-pr-number.sh,
+                   which release.yml uses to find a merge's pull request
+                   (tested by test-release-pr-number.sh)
 Tests/             MonitorCoreTests, MonitorSourcesTests, MonitorStoreTests,
                    MonitorLogTests, MonitorPrometheusTests, MonitorExporterTests,
                    MonitorUITests, CommandLineTests (the three headless tools'
@@ -358,8 +361,14 @@ are no component-level AGENTS.md files.
     **The label is read from the number in the merge commit's subject**, not by
     asking GitHub which pull request a commit came from — that association is
     not reliably present when this runs, and an empty answer is
-    indistinguishable from an unlabelled merge. The lookup has no `|| true`
-    either: it must fail loudly rather than fall through to the default.
+    indistinguishable from an unlabelled merge. `Scripts/release-pr-number.sh`
+    reads both shapes: `Merge pull request #N from …` and a squash's `(#N)`.
+    It matched only the squash shape until #53, so every merge commit shipped a
+    patch whatever its label. A merge commit (two parents) with no number now
+    **stops the release** rather than guessing; a direct push (one parent) still
+    gets the patch default. `Scripts/test-release-pr-number.sh` runs in CI.
+    The lookup has no `|| true` either: it must fail loudly rather than fall
+    through to the default.
     `permissions:` must keep `pull-requests: read`, since the block sets every
     scope it does not name to `none`.
   - **Two ways to publish nothing:** a `release:skip` label, or a merge that
@@ -594,7 +603,8 @@ are no component-level AGENTS.md files.
 - **A merge shipped a patch version when it was labelled `release:minor`**:
   the label lookup came back empty. Check the "Version" step's log — it now
   prints the pull request number, the labels it found and the bump it chose. A
-  number of `none` on a squash merge means the subject did not end in `(#N)`;
+  number of `none` means the subject matched neither `Merge pull request #N
+  from …` nor a trailing `(#N)`;
   empty labels on a real number means the token could not read them, so check
   `pull-requests: read` is still in the workflow's `permissions:`.
 - **A pull request reports no CI**: it came from a fork, and the jobs skip fork
