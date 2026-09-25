@@ -113,3 +113,9 @@ jobs:
 
       - name: Lint
         run: swiftformat Sources Tests Plugins --lint --cache ignore
+
+      # release.yml runs this script unattended on every merge to main, where a
+      # wrong answer ships the wrong version. Tested here, on every pull
+      # request, so a broken refusal is caught before it matters (#53).
+      - name: Test release scripts
+        run: Scripts/test-release-pr-number.sh
