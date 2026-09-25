@@ -62,7 +62,8 @@ swift run monitord --version     # version and the commit it was built from
 swiftformat Sources Tests Plugins --lint --cache ignore   # CI lint gate
 Scripts/make-app.sh [dest]       # wrap the release binary in monitor.app
 Scripts/make-icon.swift out.icns # draw the app icon (make-app.sh calls this)
-Scripts/notarize.sh app zip      # notarize a Developer ID build and staple it
+Scripts/notarize.sh .build/package   # notarize the app and tools, staple the app
+Scripts/make-dmg.sh app out.dmg  # the app in a disk image beside /Applications
 Scripts/test-release-pr-number.sh # the release label lookup's cases (CI runs it)
 ```
 
@@ -111,7 +112,8 @@ Plugins/
                    before every build, so the title bar cannot go stale
 Scripts/           make-app.sh, which builds monitor.app, make-icon.swift,
                    which draws its icon, notarize.sh, which notarizes and
-                   staples a Developer ID build, and release-pr-number.sh,
+                   staples a Developer ID build, make-dmg.sh, which puts
+                   the app in a disk image, and release-pr-number.sh,
                    which release.yml uses to find a merge's pull request
                    (tested by test-release-pr-number.sh)
 Tests/             MonitorCoreTests, MonitorSourcesTests, MonitorStoreTests,
@@ -123,7 +125,8 @@ docs/              README.md is the index
   ci.yml           build, test, release build, CLI smoke tests (including
                    --help/--version and that monitord --help writes no CSV), lint
   release.yml      bumps the version on a merge to main, tags it, releases it
-  package.yml      reusable: builds monitor.app, zips it, attaches it to a tag
+  package.yml      reusable: builds monitor.app into a .dmg and the tools into a
+                   zip, attaches both to a tag
 ```
 
 One SwiftPM package: one build and one test command cover all of it, so there
@@ -351,7 +354,10 @@ are no component-level AGENTS.md files.
 - **Releasing is a merge, nothing else.** `release.yml` bumps
   `MonitorVersion.string` itself on every merge to main, commits it back as
   `Version x.y.z [skip ci]`, tags it, publishes the release and attaches
-  `monitor-<version>.zip` built by `package.yml`. **Never remove the
+  `monitor-<version>.dmg` (the app) and `monitor-tools-<version>.zip`
+  (`monitord`, `monitor-exporter`, `install-exporter.sh`) built by
+  `package.yml`. Two files because a drag-to-Applications window offers one
+  gesture, and binaries beside the app would make it unclear what to drag. **Never remove the
   `[skip ci]`** — it is what stops the workflow triggering itself into an
   endless bump.
   - **The default is a patch bump.** `release:minor` or `release:major` on the
@@ -376,19 +382,23 @@ are no component-level AGENTS.md files.
     docs *and* code still ships.
   - **Two escape hatches:** a pull request that sets `MonitorVersion.string`
     itself ships exactly that version, and a release published by hand from the
-    GitHub UI gets its zip the same way.
+    GitHub UI gets its files the same way.
 - **Signing is off until two repository variables are set.** `SIGN_IDENTITY`
   and `NOTARY_PROFILE` turn on Developer ID signing and notarization in
   `package.yml`; unset, a release is ad-hoc signed exactly as before. Set,
-  failing to sign or notarize fails the release rather than publishing a zip
+  failing to sign or notarize fails the release rather than publishing files
   nobody can open. The credentials live in the Mac runner's keychain, not in
   GitHub secrets — which is why the runner's LaunchAgent needs
   `SessionCreate = false`: with the default `true`, every job gets its own
   security session, cannot reach the login keychain, and `codesign` fails with
   `errSecInternalComponent`. A signing runner cannot be headless.
-  **`notarize.sh` rebuilds the zip after stapling** — `stapler`
-  writes into the bundle, not the archive, so the uploaded copy is unstapled
-  until it is made again. `docs/signing.md` is the setup.
+  **Staple the app before packaging it** — `stapler` writes into the bundle,
+  not into any archive around it, so `notarize.sh` staples the app and only
+  then does `make-dmg.sh` put it in the image, which is notarized and stapled
+  in turn. `docs/signing.md` is the setup. A macOS update can reset the signing
+  key's partition list, and then `codesign` fails with the same
+  `errSecInternalComponent` (#61); `set-key-partition-list` at the Mac's own
+  console fixes it.
 - **The title bar says which build this is.** The app's name with
   `BuildStamp.label` under it — the commit and when it was made — as one block,
   **white on black in the system font**, with the window's own title removed

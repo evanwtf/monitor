@@ -146,20 +146,34 @@ It signs with `--options runtime` and a secure timestamp. Neither is optional:
 the notary service rejects a bundle without them, and neither can be added
 afterwards without signing again.
 
-`Scripts/notarize.sh` submits the zip, waits, staples the ticket to the bundle
-and **rebuilds the zip**. That last step is the one that is easy to miss.
-`stapler` writes into the bundle, not into the archive, so the zip that was
-uploaded is still unstapled: publishing it gives every downloader a round trip
-to Apple on first launch, and a plain failure if they are offline. The zip has
-to be made again, after stapling, around the stapled bundle.
+A release is two files, and the order they are made in matters:
+
+1. `Scripts/notarize.sh .build/package` submits the app and the tools in one
+   throwaway zip, waits, and **staples the ticket to the app**.
+2. `Scripts/make-dmg.sh` puts the stapled app in `monitor-<version>.dmg` beside
+   a link to `/Applications`, signs the image, and notarizes and staples the
+   image too.
+3. `package.yml` zips the tools into `monitor-tools-<version>.zip`.
+
+Stapling comes before packaging because `stapler` writes into the bundle, not
+into any archive around it. An image made first would hold an unstapled app:
+every downloader would get a round trip to Apple on first launch, and a plain
+failure when offline. The image carries its own ticket for opening it; the app
+carries its own for when it is dragged out. The bare tools cannot hold a
+ticket, so Gatekeeper looks theirs up online.
+
+The image has no background picture and no icon positions. Both live in a
+`.DS_Store` that only Finder writes, and scripting Finder on the runner is
+fragile. The plain window still shows the app and the Applications link side
+by side.
 
 ## Doing it by hand
 
 ```sh
 Scripts/make-app.sh
-ditto -c -k --keepParent .build/monitor.app monitor-1.1.0.zip
-MONITOR_NOTARY_PROFILE=monitor-notary \
-    Scripts/notarize.sh .build/monitor.app monitor-1.1.0.zip
+export MONITOR_NOTARY_PROFILE=monitor-notary
+Scripts/notarize.sh .build/package
+Scripts/make-dmg.sh .build/package/monitor.app monitor-1.9.0.dmg
 ```
 
 ## Checking it worked
