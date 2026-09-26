@@ -201,7 +201,10 @@ public struct DashboardView: View {
                                 for: [(descriptor, model.points(metric))], window: window
                             )
                         } rendered: {
-                            copyBackground(dial.frame(width: gaugeSize))
+                            copyBackground(
+                                gaugeTile(metric, descriptor, size: gaugeSize, forImage: true)
+                                    .frame(width: gaugeSize)
+                            )
                         }
                         .reorderable(
                             .gauge(metric.rawValue), target: $dropTarget, onDrop: dropGauge
@@ -296,7 +299,7 @@ public struct DashboardView: View {
     /// picture a second time — the tile in the wall carries the drag machinery,
     /// and the copy wants only the dial.
     private func gaugeTile(
-        _ metric: MetricID, _ descriptor: MetricDescriptor, size: Double
+        _ metric: MetricID, _ descriptor: MetricDescriptor, size: Double, forImage: Bool = false
     ) -> some View {
         VStack(spacing: 2) {
             GaugeView(
@@ -307,7 +310,9 @@ public struct DashboardView: View {
                 unit: descriptor.unit,
                 // Needle travel matches the sampling interval, so it is still
                 // moving when the next sample arrives.
-                travelTime: model.interval
+                travelTime: model.interval,
+                // `ImageRenderer` cannot draw the live hands' layers (#69).
+                liveHands: !forImage
             )
             // The dial's label, not its value. The readout on the face already
             // carries the number and its unit, so repeating it here was the
