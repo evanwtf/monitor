@@ -161,6 +161,15 @@ are no component-level AGENTS.md files.
   keyed by level because the *name* differs across silicon ("Super" on M4,
   "Performance" earlier). `host_processor_info` numbers cores in reverse
   perflevel order — slowest cluster first.
+- **Gauge hands are turned by Core Animation, never by SwiftUI** (#69).
+  `DialHand` is a layer rotated by a `CABasicAnimation`, which the render server
+  runs. The needle's travel time is the sampling interval, so it is always
+  mid-sweep: as an animatable SwiftUI `Shape` it kept the whole panel
+  re-evaluating at the display's refresh rate, 41.6% of a core at rest against
+  6.8% now. `DialHandTests` fails on any `.animation(` or `withAnimation` in
+  `MonitorUI` outside its allowlist. `ImageRenderer` cannot draw a layer, so
+  **Copy Image** draws a dial with the still `NeedleShape` and `PeakMarkShape`
+  (`liveHands: false`), and a test checks the two point the same way.
 - **Gauges are for rates, charts are for levels.** A dial answers "how hard is
   this working right now against what it can do" (disk, network throughput). A
   chart answers "what has been happening" (CPU, memory). `LayoutDefaults`

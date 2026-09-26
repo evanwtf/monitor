@@ -3,29 +3,25 @@ import SwiftUI
 
 /// The dial sweeps 240°, from lower left to lower right, leaving the bottom
 /// open for the readout. A full 360° dial has no unambiguous zero.
-private let dialStart = Angle(degrees: 150)
-private let dialSweep = Angle(degrees: 240)
+enum GaugeGeometry {
+    static let dialStart = Angle(degrees: 150)
+    static let dialSweep = Angle(degrees: 240)
+}
+
+private let dialStart = GaugeGeometry.dialStart
+private let dialSweep = GaugeGeometry.dialSweep
 /// Fraction of the sweep marked as redline.
 private let redlineStart = 0.8
 
-/// The needle, as a `Shape`.
+/// The needle, as a `Shape`: the still picture of it.
 ///
-/// This is a `Shape` and not part of the `Canvas` for one specific reason:
-/// `Canvas` draws imperatively from whatever the closure reads, so SwiftUI
-/// cannot interpolate it and the needle jumps once per sample — at a one-second
-/// sampling rate the gauge visibly runs at 1 fps. A `Shape` with
-/// `animatableData` is interpolated by SwiftUI at the display refresh rate, so
-/// the needle sweeps between readings instead of teleporting.
-///
-/// The face behind it stays in a `Canvas`, because ticks and labels do not move.
+/// The live panel does not draw this. There the hands are `DialHand`, turned
+/// by Core Animation (#69). But `ImageRenderer`, which **Copy Image** uses,
+/// cannot draw an `NSViewRepresentable`, so a copied dial is drawn with these
+/// shapes instead, at the needle's current reading.
 struct NeedleShape: Shape {
     /// Position on the dial, 0...1.
     var fraction: Double
-
-    var animatableData: Double {
-        get { fraction }
-        set { fraction = newValue }
-    }
 
     func path(in rect: CGRect) -> Path {
         let radius = min(rect.width, rect.height) / 2
@@ -48,14 +44,9 @@ struct NeedleShape: Shape {
     }
 }
 
-/// The recent-peak marker, animatable for the same reason as the needle.
+/// The recent-peak marker's still picture, for the same reason as the needle.
 struct PeakMarkShape: Shape {
     var fraction: Double
-
-    var animatableData: Double {
-        get { fraction }
-        set { fraction = newValue }
-    }
 
     func path(in rect: CGRect) -> Path {
         let radius = min(rect.width, rect.height) / 2
@@ -99,13 +90,18 @@ public struct GaugeView: View {
     /// which is the correct trade for an instrument you read at a glance.
     public var travelTime: TimeInterval = 1.0
 
+    /// Whether the hands are live. False for a dial rendered to an image,
+    /// which cannot hold a layer and would otherwise lose its needle.
+    public var liveHands = true
+
     public init(
         title: String,
         value: Double,
         fullScale: Double,
         peak: Double? = nil,
         unit: MetricUnit,
-        travelTime: TimeInterval = 1.0
+        travelTime: TimeInterval = 1.0,
+        liveHands: Bool = true
     ) {
         self.title = title
         self.value = value
@@ -113,6 +109,7 @@ public struct GaugeView: View {
         self.peak = peak
         self.unit = unit
         self.travelTime = travelTime
+        self.liveHands = liveHands
     }
 
     private var fraction: Double {
@@ -140,18 +137,35 @@ public struct GaugeView: View {
                     drawRedline(context: context, center: center, radius: radius)
                 }
 
-                if peak != nil {
-                    PeakMarkShape(fraction: peakFraction)
-                        .stroke(Theme.readout.opacity(0.55), lineWidth: 1.5)
-                        .animation(.easeOut(duration: travelTime), value: peakFraction)
-                }
-
-                NeedleShape(fraction: fraction)
-                    .stroke(
-                        Theme.needle,
-                        style: StrokeStyle(lineWidth: max(2, radius * 0.045), lineCap: .round)
+                // Both hands are turned by Core Animation, not SwiftUI; see
+                // `DialHand` for why (#69). An image gets the still shapes.
+                if liveHands {
+                    if peak != nil {
+                        DialHand(
+                            fraction: peakFraction, from: 0.64, to: 0.84,
+                            color: Theme.readout.opacity(0.55), lineWidth: { _ in 1.5 },
+                            lineCap: .butt, travelTime: travelTime
+                        )
+                    }
+                    DialHand(
+                        fraction: fraction, from: -0.12, to: 0.78,
+                        color: Theme.needle, lineWidth: { max(2, $0 * 0.045) },
+                        lineCap: .round, travelTime: travelTime
                     )
-                    .animation(.easeOut(duration: travelTime), value: fraction)
+                } else {
+                    if peak != nil {
+                        PeakMarkShape(fraction: peakFraction)
+                            .stroke(Theme.readout.opacity(0.55), lineWidth: 1.5)
+                    }
+                    NeedleShape(fraction: fraction)
+                        .stroke(
+                            Theme.needle,
+                            style: StrokeStyle(
+                                lineWidth: max(2, radius * 0.045),
+                                lineCap: .round
+                            )
+                        )
+                }
 
                 hub(radius: radius)
                 readout(radius: radius)
