@@ -19,7 +19,7 @@ One Swift package builds three programs: a SwiftUI app, a CSV logging daemon,
 and a headless CLI for reading the same metrics from a terminal.
 
 ## Screenshot
-<img width="1470" height="923" alt="Screenshot 2026-08-12 at 10 55 01 AM" src="https://github.com/user-attachments/assets/cafed6c4-16ec-4af0-9d1b-45d0febf6542" />
+<img width="1608" height="850" alt="Screenshot 2026-09-27 at 9 07 55 AM" src="https://github.com/user-attachments/assets/d977a9ad-378d-4c99-bf4a-e2e16eb7f68d" />
 
 ## What the repository provides
 
