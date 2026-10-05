@@ -396,11 +396,16 @@ are no component-level AGENTS.md files.
   and `NOTARY_PROFILE` turn on Developer ID signing and notarization in
   `package.yml`; unset, a release is ad-hoc signed exactly as before. Set,
   failing to sign or notarize fails the release rather than publishing files
-  nobody can open. The credentials live in the Mac runner's keychain, not in
-  GitHub secrets — which is why the runner's LaunchAgent needs
-  `SessionCreate = false`: with the default `true`, every job gets its own
-  security session, cannot reach the login keychain, and `codesign` fails with
-  `errSecInternalComponent`. A signing runner cannot be headless.
+  nobody can open. The signing key and the notary profile live in the Mac
+  runner's keychain. The runner keeps GitHub's default `SessionCreate = true`,
+  so every job gets its own security session and finds the login keychain
+  locked: `package.yml` unlocks it with the `MACOS_KEYCHAIN_PASSWORD` org secret
+  and locks it again at the end, and `release.yml` must pass that secret to it.
+  Without the unlock, `codesign` fails with `errSecInternalComponent` or "no
+  identity found". A locked keychain between jobs keeps the key away from
+  pull-request jobs on the same runner. (Until 2026-10-05 the runner used
+  `SessionCreate = false` and no secret; StationCast's release job locks the
+  keychain after it runs, which could then break signing here.)
   **Staple the app before packaging it** — `stapler` writes into the bundle,
   not into any archive around it, so `notarize.sh` staples the app and only
   then does `make-dmg.sh` put it in the image, which is notarized and stapled

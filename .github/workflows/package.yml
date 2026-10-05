@@ -14,7 +14,18 @@ on:
         description: Release tag to attach the files to. Omit to only build them.
         required: false
         type: string
+    secrets:
+      MACOS_KEYCHAIN_PASSWORD:
+        description: Login keychain password of the runner. Needed only to sign.
+        required: false
   workflow_dispatch:
+    inputs:
+      tag:
+        description: >-
+          Release tag to build and attach the files to, for a release whose
+          package job failed. Omit to only build them.
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -45,8 +56,10 @@ jobs:
 
       # Signing and notarizing are opt-in through repository variables, and both
       # are all-or-nothing once set. The credentials live in the runner's own
-      # keychain — this is a Mac on a desk, not a disposable VM — so nothing
-      # secret passes through GitHub and these two variables are only names.
+      # keychain — this is a Mac on a desk, not a disposable VM — and these two
+      # variables are only names. The one secret is the keychain password:
+      # each job runs in its own security session, so it must unlock the
+      # keychain itself (see the next step).
       #
       #   SIGN_IDENTITY    e.g. "Developer ID Application: NAME (TEAMID)"
       #   NOTARY_PROFILE   a notarytool credential profile on that Mac
@@ -54,6 +67,26 @@ jobs:
       # Unset, a release is ad-hoc signed and unnotarized, exactly as before.
       # Set, a failure to sign or notarize fails the release rather than
       # quietly publishing files nobody can open. See docs/signing.md.
+      # The runner starts each job in its own security session (SessionCreate in
+      # its launchd plist), so the login keychain is locked here even while the
+      # console session has it unlocked. Unlock it for this job only. The last
+      # step locks it again, so a later job cannot use the key without the
+      # password.
+      - name: Unlock the signing keychain
+        if: vars.SIGN_IDENTITY != ''
+        env:
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MACOS_KEYCHAIN_PASSWORD}" ]; then
+            echo "::error::The MACOS_KEYCHAIN_PASSWORD org secret is not available to this workflow." >&2
+            exit 1
+          fi
+          keychain="$HOME/Library/Keychains/login.keychain-db"
+          security unlock-keychain -p "${MACOS_KEYCHAIN_PASSWORD}" "${keychain}"
+          # Two hours, so it cannot lock again while Apple notarizes.
+          security set-keychain-settings -lut 7200 "${keychain}"
+
       - name: Build monitor.app
         env:
           MONITOR_SIGN_IDENTITY: ${{ vars.SIGN_IDENTITY }}
@@ -141,3 +174,10 @@ jobs:
           # --clobber so a re-run replaces the assets rather than failing on a
           # name that already exists.
           gh release upload "$TAG" "$DMG" "$DMG.sha256" "$ZIP" "$ZIP.sha256" --clobber
+
+      - name: Lock the keychain again
+        if: always() && vars.SIGN_IDENTITY != ''
+        run: |
+          keychain="$HOME/Library/Keychains/login.keychain-db"
+          security set-keychain-settings "${keychain}" || true
+          security lock-keychain "${keychain}" || true
