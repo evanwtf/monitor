@@ -101,7 +101,7 @@ breaks signing here until somebody unlocks it.
 Connect API key (`stationcast-asc-api-key-release` in Code Secrets: key
 `F8NPMRD384`, App Manager role), not an Apple ID. An app-specific password
 stops working when the Apple ID password changes; on 2026-10-05 the one in
-`monitor-notary-password` failed with HTTP 401.
+`monitor-notary-password` failed with HTTP 401, and that item was deleted.
 
 ```sh
 xcrun notarytool store-credentials monitor-notary \
