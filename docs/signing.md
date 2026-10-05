@@ -44,9 +44,12 @@ downloads.
 ## One-time setup on the Mac runner
 
 Signing and notarizing happen in `package.yml`, on the self-hosted macOS runner.
-The credentials live in that machine's keychain rather than in GitHub secrets:
-it is a Mac on a desk, not a disposable VM, so there is no reason to put a
-private key where it can leak.
+The signing key and the notary profile live in that machine's keychain, not in
+GitHub: it is a Mac on a desk, not a disposable VM, so there is no reason to put
+a private key where it can leak. The one secret in GitHub is the keychain's
+password (`MACOS_KEYCHAIN_PASSWORD`, an org secret shared with `fancontrol`),
+because each job must unlock the keychain itself. The org-wide runner setup is
+in `evanwtf/.github-private`, `docs/macos-runner-setup.md` section 6.
 
 **1. Install the certificate.** The identity travels as a `.p12` — the
 certificate and its private key together. Restore it from 1Password
@@ -80,42 +83,34 @@ If the runner runs as a LaunchDaemon it has no login keychain at all. Run it as
 a LaunchAgent under your user, or give it a dedicated keychain and unlock that
 in the job.
 
-**A LaunchAgent is not enough on its own.** GitHub's `svc.sh` writes
+**Each job unlocks the keychain itself.** GitHub's `svc.sh` writes
 `SessionCreate = true` into the runner's plist, which spawns every job into its
 own security session. That session does not inherit the login session's
 unlocked keychain, so `codesign` finds the identity, fails to reach its private
 key, and reports `errSecInternalComponent` — an error that says nothing about
-keychains. Turn it off and reload:
+keychains. `package.yml` therefore unlocks the login keychain with the
+`MACOS_KEYCHAIN_PASSWORD` secret before it signs, and locks it again in its
+last step.
 
-```sh
-p=~/Library/LaunchAgents/actions.runner.<org>.<runner>.plist
-cp "$p" "$p.bak"
-/usr/libexec/PlistBuddy -c "Set :SessionCreate false" "$p"
-launchctl bootout gui/$(id -u)/actions.runner.<org>.<runner>
-launchctl bootstrap gui/$(id -u) "$p"
-```
+Keep `SessionCreate = true`. With `false`, jobs share the console session: any
+job on the runner, including a pull request's, can use the key while the
+keychain is unlocked, and another repository's job that locks the keychain
+breaks signing here until somebody unlocks it.
 
-The job then runs in the console user's session and signs against the keychain
-unlocked at login. The alternative is to keep the separate session and unlock a
-keychain inside the job, which means putting its password in a GitHub secret —
-the thing keeping the credentials on the runner was meant to avoid.
-
-This needs somebody logged in at the console on that Mac. A runner that signs
-is a runner that is not headless.
-
-**3. Store notarization credentials.** An app-specific password from
-appleid.apple.com, kept in a named profile:
+**3. Store notarization credentials.** A named profile made from the App Store
+Connect API key (`stationcast-asc-api-key-release` in Code Secrets: key
+`F8NPMRD384`, App Manager role), not an Apple ID. An app-specific password
+stops working when the Apple ID password changes; on 2026-10-05 the one in
+`monitor-notary-password` failed with HTTP 401.
 
 ```sh
 xcrun notarytool store-credentials monitor-notary \
-    --apple-id you@example.com --team-id <TEAMID> --password <app-specific>
+    --key AuthKey_F8NPMRD384.p8 --key-id F8NPMRD384 \
+    --issuer cd5de39f-2971-421b-b3c1-fc2bb49a0b96
 ```
 
-The password is an **app-specific** one from
-[appleid.apple.com](https://appleid.apple.com/account/manage), not the Apple ID
-password, which `notarytool` refuses. Keep it in 1Password as
-`monitor-notary-password` in Code Secrets: the profile on the runner cannot be
-read back out, so rebuilding that Mac would otherwise mean generating a new one.
+`store-credentials` copies the key into the keychain, so delete the `.p8` file
+afterwards.
 
 Check it took, which costs nothing and answers a question that is otherwise
 twenty minutes away:

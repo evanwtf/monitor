@@ -252,3 +252,6 @@ jobs:
     uses: ./.github/workflows/package.yml
     with:
       tag: ${{ github.event_name == 'release' && github.event.release.tag_name || needs.tag.outputs.tag }}
+    # A called workflow sees no secrets unless the caller passes them.
+    secrets:
+      MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
