@@ -147,7 +147,7 @@ public struct SevenSegmentText: View {
             let half = thickness / 2
             let width = cellWidth
 
-            /// A bar as a mitred hexagon, from one end to the other.
+            // A bar as a mitred hexagon, from one end to the other.
             func bar(
                 from start: (Double, Double), to end: (Double, Double), horizontal: Bool
             ) -> Path {
