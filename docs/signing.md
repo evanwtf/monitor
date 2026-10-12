@@ -98,8 +98,9 @@ keychain is unlocked, and another repository's job that locks the keychain
 breaks signing here until somebody unlocks it.
 
 **3. Store notarization credentials.** A named profile made from the App Store
-Connect API key (`stationcast-asc-api-key-release` in Code Secrets: key
-`F8NPMRD384`, App Manager role), not an Apple ID. An app-specific password
+Connect API key (`apple-team-asc-api-key` in Code Secrets, formerly
+`stationcast-asc-api-key-release`: key `F8NPMRD384`, App Manager role), not an
+Apple ID. An app-specific password
 stops working when the Apple ID password changes; on 2026-10-05 the one in
 `monitor-notary-password` failed with HTTP 401, and that item was deleted.
 
