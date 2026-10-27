@@ -314,8 +314,7 @@ public struct PanelArrangement: Codable, Equatable, Sendable {
                 anchor = Swift.max(anchor, index + 1)
                 continue
             }
-            guard !present.contains(item) else { continue }
-            guard additions?.contains(item) ?? true else { continue }
+            guard !present.contains(item), additions?.contains(item) ?? true else { continue }
             merged.insert(item, at: Swift.min(anchor, merged.count))
             anchor += 1
         }

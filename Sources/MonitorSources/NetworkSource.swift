@@ -150,9 +150,9 @@ public final class NetworkSource: MetricSource, @unchecked Sendable {
             let interface = entry.pointee
             // AF_LINK carries the counters; the AF_INET entry for the same
             // interface does not, and counting both would double every byte.
-            guard interface.ifa_addr?.pointee.sa_family == UInt8(AF_LINK) else { continue }
-            guard names.contains(String(cString: interface.ifa_name)) else { continue }
-            guard let raw = interface.ifa_data else { continue }
+            guard interface.ifa_addr?.pointee.sa_family == UInt8(AF_LINK),
+                  names.contains(String(cString: interface.ifa_name)),
+                  let raw = interface.ifa_data else { continue }
 
             let data = raw.assumingMemoryBound(to: if_data.self).pointee
             totals.bytesIn += Double(data.ifi_ibytes)

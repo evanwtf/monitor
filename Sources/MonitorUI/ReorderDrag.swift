@@ -15,13 +15,17 @@ enum PanelTile: Codable, Equatable, Hashable, Sendable {
     var gauge: MetricID? {
         if case let .gauge(id) = self {
             MetricID(id)
-        } else { nil }
+        } else {
+            nil
+        }
     }
 
     var chart: String? {
         if case let .chart(group) = self {
             group
-        } else { nil }
+        } else {
+            nil
+        }
     }
 }
 
