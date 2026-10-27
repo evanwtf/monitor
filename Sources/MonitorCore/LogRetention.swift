@@ -51,8 +51,8 @@ public enum LogRetention: String, CaseIterable, Sendable {
         let formatter = DateFormatter()
         formatter.timeZone = .current
         formatter.dateFormat = "yyyy_MM_dd_HH_mm_ss"
-        guard base.count >= 19 else { return nil }
-        guard let date = formatter.date(from: String(base.suffix(19))) else { return nil }
+        guard base.count >= 19,
+              let date = formatter.date(from: String(base.suffix(19))) else { return nil }
         return period(for: date.timeIntervalSince1970)
     }
 }
