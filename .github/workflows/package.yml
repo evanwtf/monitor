@@ -151,7 +151,9 @@ jobs:
           cat "$DMG.sha256" "$ZIP.sha256"
 
       # Uploaded on every run, released or not, so a manual run is a way to get
-      # a build without publishing anything.
+      # a build without publishing anything. It keeps 3 days, the most any
+      # artifact keeps (Evan, 2026-10-27): the release is where the files
+      # stay.
       - uses: actions/upload-artifact@v4
         with:
           name: monitor-app
@@ -161,6 +163,7 @@ jobs:
             ${{ steps.package.outputs.zip }}
             ${{ steps.package.outputs.zip }}.sha256
           if-no-files-found: error
+          retention-days: 3
 
       - name: Attach to release
         if: inputs.tag != ''
